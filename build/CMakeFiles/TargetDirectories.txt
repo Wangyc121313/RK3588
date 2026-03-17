@@ -1,0 +1,3 @@
+/home/orangepi/RK3588/build/CMakeFiles/camera_v4l2_demo.dir
+/home/orangepi/RK3588/build/CMakeFiles/edit_cache.dir
+/home/orangepi/RK3588/build/CMakeFiles/rebuild_cache.dir

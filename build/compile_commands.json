@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/orangepi/RK3588/build",
+  "command": "/usr/bin/c++   -g -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/camera_v4l2_demo.dir/src/camera_v4l2_demo.cpp.o -c /home/orangepi/RK3588/src/camera_v4l2_demo.cpp",
+  "file": "/home/orangepi/RK3588/src/camera_v4l2_demo.cpp"
+}
+]

@@ -1,0 +1,1 @@
+/usr/bin/c++ -g CMakeFiles/camera_v4l2_demo.dir/src/camera_v4l2_demo.cpp.o -o camera_v4l2_demo 
