@@ -129,6 +129,58 @@ camera_v4l2_demo/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/camera_v4l2_demo.dir/build.make CMakeFiles/camera_v4l2_demo.dir/build
 .PHONY : camera_v4l2_demo/fast
 
+#=============================================================================
+# Target rules for targets named rplidar_demo
+
+# Build rule for target.
+rplidar_demo: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 rplidar_demo
+.PHONY : rplidar_demo
+
+# fast build rule for target.
+rplidar_demo/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_demo.dir/build.make CMakeFiles/rplidar_demo.dir/build
+.PHONY : rplidar_demo/fast
+
+#=============================================================================
+# Target rules for targets named rplidar_timed_demo
+
+# Build rule for target.
+rplidar_timed_demo: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 rplidar_timed_demo
+.PHONY : rplidar_timed_demo
+
+# fast build rule for target.
+rplidar_timed_demo/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_timed_demo.dir/build.make CMakeFiles/rplidar_timed_demo.dir/build
+.PHONY : rplidar_timed_demo/fast
+
+#=============================================================================
+# Target rules for targets named rplidar_guard_demo
+
+# Build rule for target.
+rplidar_guard_demo: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 rplidar_guard_demo
+.PHONY : rplidar_guard_demo
+
+# fast build rule for target.
+rplidar_guard_demo/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_guard_demo.dir/build.make CMakeFiles/rplidar_guard_demo.dir/build
+.PHONY : rplidar_guard_demo/fast
+
+#=============================================================================
+# Target rules for targets named rplidar_motor_ctl
+
+# Build rule for target.
+rplidar_motor_ctl: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 rplidar_motor_ctl
+.PHONY : rplidar_motor_ctl
+
+# fast build rule for target.
+rplidar_motor_ctl/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_motor_ctl.dir/build.make CMakeFiles/rplidar_motor_ctl.dir/build
+.PHONY : rplidar_motor_ctl/fast
+
 src/camera_v4l2_demo.o: src/camera_v4l2_demo.cpp.o
 .PHONY : src/camera_v4l2_demo.o
 
@@ -153,6 +205,102 @@ src/camera_v4l2_demo.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/camera_v4l2_demo.dir/build.make CMakeFiles/camera_v4l2_demo.dir/src/camera_v4l2_demo.cpp.s
 .PHONY : src/camera_v4l2_demo.cpp.s
 
+src/rplidar_demo.o: src/rplidar_demo.cpp.o
+.PHONY : src/rplidar_demo.o
+
+# target to build an object file
+src/rplidar_demo.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_demo.dir/build.make CMakeFiles/rplidar_demo.dir/src/rplidar_demo.cpp.o
+.PHONY : src/rplidar_demo.cpp.o
+
+src/rplidar_demo.i: src/rplidar_demo.cpp.i
+.PHONY : src/rplidar_demo.i
+
+# target to preprocess a source file
+src/rplidar_demo.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_demo.dir/build.make CMakeFiles/rplidar_demo.dir/src/rplidar_demo.cpp.i
+.PHONY : src/rplidar_demo.cpp.i
+
+src/rplidar_demo.s: src/rplidar_demo.cpp.s
+.PHONY : src/rplidar_demo.s
+
+# target to generate assembly for a file
+src/rplidar_demo.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_demo.dir/build.make CMakeFiles/rplidar_demo.dir/src/rplidar_demo.cpp.s
+.PHONY : src/rplidar_demo.cpp.s
+
+src/rplidar_guard_demo.o: src/rplidar_guard_demo.cpp.o
+.PHONY : src/rplidar_guard_demo.o
+
+# target to build an object file
+src/rplidar_guard_demo.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_guard_demo.dir/build.make CMakeFiles/rplidar_guard_demo.dir/src/rplidar_guard_demo.cpp.o
+.PHONY : src/rplidar_guard_demo.cpp.o
+
+src/rplidar_guard_demo.i: src/rplidar_guard_demo.cpp.i
+.PHONY : src/rplidar_guard_demo.i
+
+# target to preprocess a source file
+src/rplidar_guard_demo.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_guard_demo.dir/build.make CMakeFiles/rplidar_guard_demo.dir/src/rplidar_guard_demo.cpp.i
+.PHONY : src/rplidar_guard_demo.cpp.i
+
+src/rplidar_guard_demo.s: src/rplidar_guard_demo.cpp.s
+.PHONY : src/rplidar_guard_demo.s
+
+# target to generate assembly for a file
+src/rplidar_guard_demo.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_guard_demo.dir/build.make CMakeFiles/rplidar_guard_demo.dir/src/rplidar_guard_demo.cpp.s
+.PHONY : src/rplidar_guard_demo.cpp.s
+
+src/rplidar_motor_ctl.o: src/rplidar_motor_ctl.cpp.o
+.PHONY : src/rplidar_motor_ctl.o
+
+# target to build an object file
+src/rplidar_motor_ctl.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_motor_ctl.dir/build.make CMakeFiles/rplidar_motor_ctl.dir/src/rplidar_motor_ctl.cpp.o
+.PHONY : src/rplidar_motor_ctl.cpp.o
+
+src/rplidar_motor_ctl.i: src/rplidar_motor_ctl.cpp.i
+.PHONY : src/rplidar_motor_ctl.i
+
+# target to preprocess a source file
+src/rplidar_motor_ctl.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_motor_ctl.dir/build.make CMakeFiles/rplidar_motor_ctl.dir/src/rplidar_motor_ctl.cpp.i
+.PHONY : src/rplidar_motor_ctl.cpp.i
+
+src/rplidar_motor_ctl.s: src/rplidar_motor_ctl.cpp.s
+.PHONY : src/rplidar_motor_ctl.s
+
+# target to generate assembly for a file
+src/rplidar_motor_ctl.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_motor_ctl.dir/build.make CMakeFiles/rplidar_motor_ctl.dir/src/rplidar_motor_ctl.cpp.s
+.PHONY : src/rplidar_motor_ctl.cpp.s
+
+src/rplidar_timed_demo.o: src/rplidar_timed_demo.cpp.o
+.PHONY : src/rplidar_timed_demo.o
+
+# target to build an object file
+src/rplidar_timed_demo.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_timed_demo.dir/build.make CMakeFiles/rplidar_timed_demo.dir/src/rplidar_timed_demo.cpp.o
+.PHONY : src/rplidar_timed_demo.cpp.o
+
+src/rplidar_timed_demo.i: src/rplidar_timed_demo.cpp.i
+.PHONY : src/rplidar_timed_demo.i
+
+# target to preprocess a source file
+src/rplidar_timed_demo.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_timed_demo.dir/build.make CMakeFiles/rplidar_timed_demo.dir/src/rplidar_timed_demo.cpp.i
+.PHONY : src/rplidar_timed_demo.cpp.i
+
+src/rplidar_timed_demo.s: src/rplidar_timed_demo.cpp.s
+.PHONY : src/rplidar_timed_demo.s
+
+# target to generate assembly for a file
+src/rplidar_timed_demo.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rplidar_timed_demo.dir/build.make CMakeFiles/rplidar_timed_demo.dir/src/rplidar_timed_demo.cpp.s
+.PHONY : src/rplidar_timed_demo.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -162,9 +310,25 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... camera_v4l2_demo"
+	@echo "... rplidar_demo"
+	@echo "... rplidar_guard_demo"
+	@echo "... rplidar_motor_ctl"
+	@echo "... rplidar_timed_demo"
 	@echo "... src/camera_v4l2_demo.o"
 	@echo "... src/camera_v4l2_demo.i"
 	@echo "... src/camera_v4l2_demo.s"
+	@echo "... src/rplidar_demo.o"
+	@echo "... src/rplidar_demo.i"
+	@echo "... src/rplidar_demo.s"
+	@echo "... src/rplidar_guard_demo.o"
+	@echo "... src/rplidar_guard_demo.i"
+	@echo "... src/rplidar_guard_demo.s"
+	@echo "... src/rplidar_motor_ctl.o"
+	@echo "... src/rplidar_motor_ctl.i"
+	@echo "... src/rplidar_motor_ctl.s"
+	@echo "... src/rplidar_timed_demo.o"
+	@echo "... src/rplidar_timed_demo.i"
+	@echo "... src/rplidar_timed_demo.s"
 .PHONY : help
 
 

@@ -1,3 +1,7 @@
 /home/orangepi/RK3588/build/CMakeFiles/camera_v4l2_demo.dir
+/home/orangepi/RK3588/build/CMakeFiles/rplidar_demo.dir
+/home/orangepi/RK3588/build/CMakeFiles/rplidar_timed_demo.dir
+/home/orangepi/RK3588/build/CMakeFiles/rplidar_guard_demo.dir
+/home/orangepi/RK3588/build/CMakeFiles/rplidar_motor_ctl.dir
 /home/orangepi/RK3588/build/CMakeFiles/edit_cache.dir
 /home/orangepi/RK3588/build/CMakeFiles/rebuild_cache.dir

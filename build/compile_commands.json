@@ -3,5 +3,25 @@
   "directory": "/home/orangepi/RK3588/build",
   "command": "/usr/bin/c++   -g -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/camera_v4l2_demo.dir/src/camera_v4l2_demo.cpp.o -c /home/orangepi/RK3588/src/camera_v4l2_demo.cpp",
   "file": "/home/orangepi/RK3588/src/camera_v4l2_demo.cpp"
+},
+{
+  "directory": "/home/orangepi/RK3588/build",
+  "command": "/usr/bin/c++  -I/home/orangepi/RK3588/third_party/rplidar_sdk/sdk/include -g -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/rplidar_demo.dir/src/rplidar_demo.cpp.o -c /home/orangepi/RK3588/src/rplidar_demo.cpp",
+  "file": "/home/orangepi/RK3588/src/rplidar_demo.cpp"
+},
+{
+  "directory": "/home/orangepi/RK3588/build",
+  "command": "/usr/bin/c++  -I/home/orangepi/RK3588/third_party/rplidar_sdk/sdk/include -g -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/rplidar_timed_demo.dir/src/rplidar_timed_demo.cpp.o -c /home/orangepi/RK3588/src/rplidar_timed_demo.cpp",
+  "file": "/home/orangepi/RK3588/src/rplidar_timed_demo.cpp"
+},
+{
+  "directory": "/home/orangepi/RK3588/build",
+  "command": "/usr/bin/c++  -I/home/orangepi/RK3588/third_party/rplidar_sdk/sdk/include -g -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/rplidar_guard_demo.dir/src/rplidar_guard_demo.cpp.o -c /home/orangepi/RK3588/src/rplidar_guard_demo.cpp",
+  "file": "/home/orangepi/RK3588/src/rplidar_guard_demo.cpp"
+},
+{
+  "directory": "/home/orangepi/RK3588/build",
+  "command": "/usr/bin/c++  -I/home/orangepi/RK3588/third_party/rplidar_sdk/sdk/include -g -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/rplidar_motor_ctl.dir/src/rplidar_motor_ctl.cpp.o -c /home/orangepi/RK3588/src/rplidar_motor_ctl.cpp",
+  "file": "/home/orangepi/RK3588/src/rplidar_motor_ctl.cpp"
 }
 ]

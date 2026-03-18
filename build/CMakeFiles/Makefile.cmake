@@ -97,4 +97,8 @@ set(CMAKE_MAKEFILE_PRODUCTS
 # Dependency information for all targets:
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/camera_v4l2_demo.dir/DependInfo.cmake"
+  "CMakeFiles/rplidar_demo.dir/DependInfo.cmake"
+  "CMakeFiles/rplidar_timed_demo.dir/DependInfo.cmake"
+  "CMakeFiles/rplidar_guard_demo.dir/DependInfo.cmake"
+  "CMakeFiles/rplidar_motor_ctl.dir/DependInfo.cmake"
   )

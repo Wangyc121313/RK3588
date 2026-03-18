@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <limits>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -12,9 +13,9 @@ namespace {
 
 class DriverDeleter {
 public:
-    void operator()(sl::lidar::ILidarDriver* driver) const {
+    void operator()(sl::ILidarDriver* driver) const {
         if (driver != nullptr) {
-            sl::lidar::ILidarDriver::DisposeDriver(driver);
+            delete driver;
         }
     }
 };
@@ -44,17 +45,19 @@ int main(int argc, char* argv[]) {
     const std::string port = argc > 1 ? argv[1] : "/dev/ttyUSB0";
     const int baudrate = argc > 2 ? std::atoi(argv[2]) : 115200;
 
-    std::unique_ptr<sl::lidar::ILidarDriver, DriverDeleter> driver(sl::lidar::createLidarDriver());
-    if (!driver) {
+    auto driver_result = sl::createLidarDriver();
+    if (!driver_result || *driver_result == nullptr) {
         std::cerr << "failed to create lidar driver\n";
         return 1;
     }
+    std::unique_ptr<sl::ILidarDriver, DriverDeleter> driver(*driver_result);
 
-    std::unique_ptr<sl::IChannel, ChannelDeleter> channel(sl::createSerialPortChannel(port, baudrate));
-    if (!channel) {
+    auto channel_result = sl::createSerialPortChannel(port, baudrate);
+    if (!channel_result || *channel_result == nullptr) {
         std::cerr << "failed to create serial channel for " << port << '\n';
         return 1;
     }
+    std::unique_ptr<sl::IChannel, ChannelDeleter> channel(*channel_result);
 
     sl_result result = driver->connect(channel.get());
     if (SL_IS_FAIL(result)) {
@@ -87,10 +90,42 @@ int main(int argc, char* argv[]) {
     if (SL_IS_FAIL(result)) {
         std::cerr << "grabScanDataHq failed, code=" << result << '\n';
         driver->stop();
+        result = driver->setMotorSpeed(0);
+        if (SL_IS_FAIL(result)) {
+            std::cerr << "warning: setMotorSpeed(0) failed, code=" << result << '\n';
+        }
+        driver->disconnect();
+        driver.reset();
         return 1;
     }
 
     driver->ascendScanData(nodes, node_count);
+
+    float min_angle = std::numeric_limits<float>::max();
+    float max_angle = std::numeric_limits<float>::lowest();
+    float min_distance = std::numeric_limits<float>::max();
+    float max_distance = 0.0f;
+    int valid_count = 0;
+    for (size_t index = 0; index < node_count; ++index) {
+        if (!isValidPoint(nodes[index])) {
+            continue;
+        }
+
+        const float angle = angleDegrees(nodes[index]);
+        const float dist = distanceMeters(nodes[index]);
+        min_angle = std::min(min_angle, angle);
+        max_angle = std::max(max_angle, angle);
+        min_distance = std::min(min_distance, dist);
+        max_distance = std::max(max_distance, dist);
+        ++valid_count;
+    }
+
+    if (valid_count > 0) {
+        std::cout << std::fixed << std::setprecision(2)
+                  << "full scan summary: valid_points=" << valid_count
+                  << " angle_range=[" << min_angle << ", " << max_angle << "] deg"
+                  << " distance_range=[" << min_distance << ", " << max_distance << "] m" << '\n';
+    }
 
     std::cout << "scan sample points:" << '\n';
     int printed = 0;
@@ -111,5 +146,11 @@ int main(int argc, char* argv[]) {
     }
 
     driver->stop();
+    result = driver->setMotorSpeed(0);
+    if (SL_IS_FAIL(result)) {
+        std::cerr << "warning: setMotorSpeed(0) failed, code=" << result << '\n';
+    }
+    driver->disconnect();
+    driver.reset();
     return 0;
 }

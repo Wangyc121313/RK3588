@@ -28,7 +28,31 @@ if(EXISTS "${RPLIDAR_SDK_INCLUDE_DIR}/sl_lidar.h")
         src/rplidar_demo.cpp
     )
 
+    add_executable(rplidar_timed_demo
+        src/rplidar_timed_demo.cpp
+    )
+
+    add_executable(rplidar_guard_demo
+        src/rplidar_guard_demo.cpp
+    )
+
+    add_executable(rplidar_motor_ctl
+        src/rplidar_motor_ctl.cpp
+    )
+
     target_include_directories(rplidar_demo PRIVATE
+        ${RPLIDAR_SDK_INCLUDE_DIR}
+    )
+
+    target_include_directories(rplidar_timed_demo PRIVATE
+        ${RPLIDAR_SDK_INCLUDE_DIR}
+    )
+
+    target_include_directories(rplidar_guard_demo PRIVATE
+        ${RPLIDAR_SDK_INCLUDE_DIR}
+    )
+
+    target_include_directories(rplidar_motor_ctl PRIVATE
         ${RPLIDAR_SDK_INCLUDE_DIR}
     )
 
@@ -36,7 +60,37 @@ if(EXISTS "${RPLIDAR_SDK_INCLUDE_DIR}/sl_lidar.h")
         ${RPLIDAR_REPO_ROOT}/output/Linux/Release
     )
 
+    target_link_directories(rplidar_timed_demo PRIVATE
+        ${RPLIDAR_REPO_ROOT}/output/Linux/Release
+    )
+
+    target_link_directories(rplidar_guard_demo PRIVATE
+        ${RPLIDAR_REPO_ROOT}/output/Linux/Release
+    )
+
+    target_link_directories(rplidar_motor_ctl PRIVATE
+        ${RPLIDAR_REPO_ROOT}/output/Linux/Release
+    )
+
     target_link_libraries(rplidar_demo PRIVATE
+        project_warnings
+        sl_lidar_sdk
+        pthread
+    )
+
+    target_link_libraries(rplidar_timed_demo PRIVATE
+        project_warnings
+        sl_lidar_sdk
+        pthread
+    )
+
+    target_link_libraries(rplidar_guard_demo PRIVATE
+        project_warnings
+        sl_lidar_sdk
+        pthread
+    )
+
+    target_link_libraries(rplidar_motor_ctl PRIVATE
         project_warnings
         sl_lidar_sdk
         pthread

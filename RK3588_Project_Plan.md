@@ -1,7 +1,7 @@
 # 基于RK3588的视觉与激光雷达融合感知系统
 
 > **项目定位**：嵌入式Linux应用开发 + 端侧AI部署 + 多传感器融合  
-> **目标岗位**：嵌入式软件开发（影石、大疆感知类、车企）  
+> **目标岗位**：嵌入式软件开发（消费电子、车企）  
 > **开发周期**：6周  
 > **硬件平台**：Orange Pi 5（RK3588S）
 
@@ -607,9 +607,11 @@ private:
 ## 11. 项目记录
 
 day1-2：(3.15&3.16)
-1.整理PRLIDAR A1、Orange Pi 5的官方datasheet
-2.烧录ubuntu镜像(.img文件，版本推荐：Orangepi5_1.2.2_ubuntu_jammy_server_linux5.10.160.7z)至tf卡并插入开发板，HDMI连接显示器，USB连接键盘
-3.通过网线接入网络（eht0网口），先在windows上得到p.nju.edu.cn的IP地址（powershell：nslookup p.nju.edu.cn），然后在开发板上ping通，确认网络连通性，由于无感知认证的bug需要手写自动登录脚本
+1.整理PRLIDAR A1、Orange Pi 5的官方datasheet；
+
+2.烧录ubuntu镜像(.img文件，版本推荐：Orangepi5_1.2.2_ubuntu_jammy_server_linux5.10.160.7z)至tf卡并插入开发板，HDMI连接显示器，USB连接键盘；
+
+3.通过网线接入网络（eht0网口），先在windows上得到p.nju.edu.cn的IP地址（powershell：nslookup p.nju.edu.cn），然后在开发板上ping通，确认网络连通性，由于无感知认证并不显示该开发板（无感知设备列表中并不显示，但在当前在线的设备信息中可以看到开发板对应的MAC地址），需要手写自动登录脚本：
 ```bash
 # 手动触发校园网认证
 curl -k -X POST 'https://p.nju.edu.cn/api/portal/v1/login' \
@@ -628,50 +630,119 @@ chmod +x ~/login_nju.sh
 crontab -e
 # 添加：@reboot /home/orangepi/login_nju.sh
 ```
-4.在vscode中SSH连接，使用remote ssh连接orangepi@192.168.1.xxx
-5.安装常用工具包
+
+4.在vscode中SSH连接，使用remote ssh连接orangepi@192.168.1.xxx；
+
+5.安装常用工具包：
 ```bash
 sudo apt update
-sudo apt install -y build-essential cmake git pkg-config v4l-utils
+sudo apt install -y build-essential cmake git pkg-config v4l-utils python3-pip ffmpeg
 ```
-6.检查NPU驱动，安装工具链
+
+6.检查NPU驱动，安装工具链：
 ```bash
 # 检查 NPU 驱动
-ls /dev/rknpu*          # 应该看到 /dev/rknpu0
 cat /proc/version       # 确认内核版本，RK3588S 通常是 5.10+
 # 安装基础工具链
 sudo apt update
 sudo apt install -y build-essential cmake git pkg-config v4l-utils ffmpeg python3-pip
 ```
-7.新建文件夹并克隆官方仓库
+
+day 3-4：(3.17&3.18)
+1.编写V4L2采集demo，使用cmake进行编译成可执行文件，连接硬件并验证摄像头采集功能：
+```bash
+# 执行cmake得到build文件下的可执行文件
+# 插上usb摄像头
+ls /dev/video*  # 确认摄像头设备节点（如/dev/video0）
+v4l2-ctl --list-formats-ext -d /dev/video0  # 查看支持的格式和分辨率
+```
+返回：
+> /dev/video0 /dev/video1
+> USB Camera: USB Camera (usb-fc800000.usb-1):
+> /dev/video0
+> /dev/video1
+> /dev/mediae
+```bash
+# 采集一帧保存为图片，验证格式
+./camera_capture_demo  # 运行采集demo，验证能否成功采集到
+```
+得到ppm格式的文件，使用`ffmpeg -i frame.ppm frame.jpg`转换为jpg格式，确认图像内容正确。
+
+默认使用video0采集（真正的视频流节点，Motion-JPEG, compressed），经过测试，发现video1为元数据节点（YUYV 4:2:2），不提供图像帧。
+
+执行demo代码可改为：
+```bash
+./build/camera_capture_demo /dev/video0
+```
+
+2.编写RPLIDAR采集demo，使用cmake编译成可执行文件，连接硬件并验证雷达数据读取功能：
+```bash
+# 执行cmake得到build文件下的可执行文件
+# 插上rplidar激光雷达
+ls /dev/ttyUSB*  # 确认激光雷达设备节点（如/dev/ttyUSB0）
+```
+返回：
+> /dev/ttyUSB0
+```bash
+# 运行采集demo，验证能否成功采集到
+./rplidar_demo /dev/ttyUSB0 115200  # 运行雷达采集demo，确认能持续输出角度和距离数据
+```
+发现出现buffer overflow错误，修改代码增加缓冲区大小后再次运行，确认能稳定输出数据。
+
+发现激光雷达只要上电就开始空转，设计控制逻辑以在需要采集时启动雷达，否则停止转动，实现方式是正常采集后实现一个非常长时间的停转。具体方式见rplidar_timed_demo.cpp。
+
+3.（Ubuntu Host）新建rknn_demo_test文件夹并克隆官方仓库：
 ```bash
 git clone https://github.com/airockchip/rknn-toolkit2.git
 git clone https://github.com/airockchip/rknn_model_zoo.git
 ```
-8.跑官方demo验证NPU
+
+4.使用python脚本进行onnx->rknn模型（int8）的转换：
 ```bash
-cd rknn-toolkit2/rknpu2/examples/rknn_yolov8_demo
-mkdir build && cd build
-cmake .. && make -j4
-./rknn_yolov8_demo ../model/yolov8n-640-640.rknn ../model/test.jpg
+# 前置准备
+sudo apt install -y adb gcc-aarch64-linux-gnu g++-aarch64-linux-gnu cmake make
+# python虚拟环境，根文件夹下执行
+python3 -m venv rknn_env
+source rknn_env/bin/activate
+python -m pip install -U pip
+pip install -r rknn-toolkit2/rknn-toolkit2/packages/x86_64/requirements_cp310-2.3.2.txt
+pip install rknn-toolkit2/rknn-toolkit2/packages/x86_64/rknn_toolkit2-2.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+# 根据官方仓库model_zoo中的yolov8教程，进行模型转换，进入yolov8文件夹
+chmod +x download_model.sh
+./download_model.sh
+cd /home/wangyc/桌面/rknn_demo/rknn_model_zoo/examples/yolov8/python
+python3 convert.py ../model/yolov8n.onnx rk3588 i8 ../model/yolov8.rknn #注意onnx版本
+# 设置交叉编译前缀
+export GCC_COMPILER=/usr/bin/aarch64-linux-gnu
+# 编译 RK3588 Linux demo
+./build-linux.sh -t rk3588 -a aarch64 -b Release
+# scp传输文件
+scp -r rknn_model_zoo/install/rk3588_linux_aarch64/rknn_yolov8_demo orangepi@180.209.2.141:~/rknn_demo_test/
 ```
 
-day 3-4：(3.17&3.18)
-1.在虚拟机Ubuntu中进行模型转换，使用RKNN-Toolkit2将YOLOv8n模型转换为RKNN格式，并进行INT8量化
-```python
-from rknn.api import RKNN
-
-rknn = RKNN(verbose=True)
-rknn.config(mean_values=[[0, 0, 0]], std_values=[[255, 255, 255]], target_platform='rk3588')
-rknn.load_onnx(model='yolov8n.onnx')
-rknn.build(do_quantization=True, dataset='./calibration_dataset.txt')
-rknn.export_rknn('./yolov8n.rknn')
+5.在开发板上运行RKNN推理demo，验证模型转换和推理功能：
+```bash
+cd ~/rknn_demo_test/rknn_yolov8_demo
+export LD_LIBRARY_PATH=./lib:$LD_LIBRARY_PATH
+./rknn_yolov8_demo model/yolov8.rknn model/bus.jpg
+ls -lh out.png
 ```
-2.使用xftp将转换后的模型文件传输到windows上然后发给开发板，验证模型在开发板上能否正确推理（主要是不想更改虚拟机的VMware网络模式了，如果使用桥接可以直接scp）
-3.编写V4L2采集demo，验证摄像头采集功能
-4.编写RPLIDAR采集demo，验证雷达数据读取功能
+
 5.设计多线程Pipeline架构，定义线程职责和通信方式
+
 6.实现线程安全的帧队列和点云缓冲区
 
+## 12.常用Shell命令
+```bash
+sudo reboot                                 # 重启系统
+sudo poweroff                               # 关机
+cat /sys/class/thermal/thermal_zone0/temp   # 查看CPU温度（数值除以1000为摄氏度）
+free -h                                     # 查看内存使用情况
+top                                         # 实时查看系统资源占用情况
+df -h /                                     # 查看磁盘使用情况
+scp local_file user@remote_host:/path/to/destination  # 从本地复制文件到远程服务器
+
+chmod +x script.sh                          # 赋予脚本执行权限
+```
 
 *文档版本：v2.0 | 最后更新：2026年3月*
