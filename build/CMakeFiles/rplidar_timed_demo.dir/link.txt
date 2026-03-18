@@ -1,1 +1,0 @@
-/usr/bin/c++ -g CMakeFiles/rplidar_timed_demo.dir/src/rplidar_timed_demo.cpp.o -o rplidar_timed_demo   -L/home/orangepi/RK3588/third_party/rplidar_sdk/output/Linux/Release  -Wl,-rpath,/home/orangepi/RK3588/third_party/rplidar_sdk/output/Linux/Release -lsl_lidar_sdk -lpthread 
