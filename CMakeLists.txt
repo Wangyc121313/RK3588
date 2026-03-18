@@ -17,7 +17,17 @@ add_executable(camera_v4l2_demo
     src/camera_v4l2_demo.cpp
 )
 
+add_executable(pipeline_thread_demo
+    src/pipeline_thread_demo.cpp
+)
+
 target_link_libraries(camera_v4l2_demo PRIVATE project_warnings)
+
+target_include_directories(pipeline_thread_demo PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+target_link_libraries(pipeline_thread_demo PRIVATE project_warnings)
 
 set(RPLIDAR_REPO_ROOT "${CMAKE_SOURCE_DIR}/third_party/rplidar_sdk")
 set(RPLIDAR_SDK_ROOT "${RPLIDAR_REPO_ROOT}/sdk")
