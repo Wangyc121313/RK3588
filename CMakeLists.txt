@@ -17,17 +17,64 @@ add_executable(camera_v4l2_demo
     src/camera_v4l2_demo.cpp
 )
 
+add_executable(camera_thread_demo
+    src/camera_thread_demo.cpp
+    src/modules/camera_capture.cpp
+)
+
 add_executable(pipeline_thread_demo
     src/pipeline_thread_demo.cpp
 )
 
 target_link_libraries(camera_v4l2_demo PRIVATE project_warnings)
 
+target_include_directories(camera_thread_demo PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+target_link_libraries(camera_thread_demo PRIVATE project_warnings)
+
 target_include_directories(pipeline_thread_demo PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
 target_link_libraries(pipeline_thread_demo PRIVATE project_warnings)
+
+set(LIBRGA_ROOT "${CMAKE_SOURCE_DIR}/third_party/librga")
+set(LIBRGA_INCLUDE_DIR "${LIBRGA_ROOT}/include")
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    set(LIBRGA_LIB_DIR "${LIBRGA_ROOT}/libs/Linux/gcc-aarch64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
+    set(LIBRGA_LIB_DIR "${LIBRGA_ROOT}/libs/Linux/gcc-armhf")
+else()
+    set(LIBRGA_LIB_DIR "")
+endif()
+
+set(LIBRGA_SHARED "${LIBRGA_LIB_DIR}/librga.so")
+
+if(EXISTS "${LIBRGA_INCLUDE_DIR}/im2d.h" AND EXISTS "${LIBRGA_SHARED}")
+    add_executable(rga_demo
+        src/rga_demo.cpp
+        src/modules/rga_processor.cpp
+    )
+
+    target_include_directories(rga_demo PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${LIBRGA_INCLUDE_DIR}
+    )
+
+    target_link_libraries(rga_demo PRIVATE
+        project_warnings
+        ${LIBRGA_SHARED}
+    )
+
+    set_target_properties(rga_demo PROPERTIES
+        BUILD_RPATH "${LIBRGA_LIB_DIR}"
+    )
+else()
+    message(STATUS "librga not found under third_party/librga; skipping rga_demo target")
+endif()
 
 set(RPLIDAR_REPO_ROOT "${CMAKE_SOURCE_DIR}/third_party/rplidar_sdk")
 set(RPLIDAR_SDK_ROOT "${RPLIDAR_REPO_ROOT}/sdk")
