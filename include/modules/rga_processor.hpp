@@ -12,6 +12,10 @@ public:
     // CPU pointer version for MVP validation. Next step can switch to DMA fd zero-copy path.
     bool processNv12ToRgbResize(const std::uint8_t* src_nv12, std::uint8_t* dst_rgb);
 
+    // Camera zero-copy path: source image comes from a V4L2 exported DMA fd.
+    // Destination is RGB888 in caller-provided CPU buffer, ready for RKNN preprocessing/debug dump.
+    bool processDmaFdToRgbResize(int src_dma_fd, std::uint32_t src_fourcc, std::uint8_t* dst_rgb);
+
     [[nodiscard]] int srcWidth() const { return src_w_; }
     [[nodiscard]] int srcHeight() const { return src_h_; }
     [[nodiscard]] int dstWidth() const { return dst_w_; }

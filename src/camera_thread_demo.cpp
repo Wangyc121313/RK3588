@@ -1,26 +1,11 @@
 #include <chrono>
 #include <cstdint>
-#include <fstream>
 #include <iostream>
 #include <string>
 
 #include "core/bounded_queue.hpp"
 #include "core/data_types.hpp"
 #include "modules/camera_capture.hpp"
-
-namespace {
-
-void savePpm(const std::string& path, const rk3588::core::FramePacket& frame, std::uint32_t width, std::uint32_t height) {
-    std::ofstream output(path, std::ios::binary);
-    if (!output) {
-        throw std::runtime_error("failed to open output file: " + path);
-    }
-
-    output << "P6\n" << width << ' ' << height << "\n255\n";
-    output.write(reinterpret_cast<const char*>(frame.pixels.data()), static_cast<std::streamsize>(frame.pixels.size()));
-}
-
-}  // namespace
 
 int main(int argc, char* argv[]) {
     const std::string device = argc > 1 ? argv[1] : "/dev/video0";
@@ -42,7 +27,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::uint64_t consumed = 0;
-    bool saved_first = false;
+    bool printed_first = false;
     const auto start = std::chrono::steady_clock::now();
 
     while (true) {
@@ -58,13 +43,17 @@ int main(int argc, char* argv[]) {
         }
 
         ++consumed;
-        if (!saved_first) {
-            try {
-                savePpm("camera_thread_first_frame.ppm", frame, width, height);
-                saved_first = true;
-            } catch (const std::exception& ex) {
-                std::cerr << "save first frame failed: " << ex.what() << '\n';
-            }
+        if (!printed_first) {
+            std::cout << "first frame metadata: index=" << frame.buffer_index
+                      << " dma_fd=" << frame.dma_fd
+                      << " w=" << frame.width
+                      << " h=" << frame.height
+                      << " fourcc=" << frame.pixel_format << '\n';
+            printed_first = true;
+        }
+
+        if (!camera.requeueBuffer(frame.buffer_index)) {
+            std::cerr << "failed to requeue camera buffer index=" << frame.buffer_index << '\n';
         }
     }
 
@@ -75,6 +64,5 @@ int main(int argc, char* argv[]) {
     std::cout << "camera_thread_demo done: consumed_frames=" << consumed
               << " run_seconds=" << run_seconds
               << " avg_fps=" << fps << '\n';
-    std::cout << "first frame saved to camera_thread_first_frame.ppm" << '\n';
     return 0;
 }

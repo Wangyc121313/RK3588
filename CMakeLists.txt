@@ -40,6 +40,50 @@ target_include_directories(pipeline_thread_demo PRIVATE
 
 target_link_libraries(pipeline_thread_demo PRIVATE project_warnings)
 
+find_path(MPP_INCLUDE_DIR
+    NAMES rk_mpi.h
+    PATHS
+        /usr/include/rockchip
+        /usr/local/include/rockchip
+        /usr/include
+        /usr/local/include
+)
+
+find_library(MPP_LIB
+    NAMES
+        rockchip_mpp
+        rk_mpi
+    PATHS
+        /usr/lib
+        /usr/local/lib
+        /usr/lib/aarch64-linux-gnu
+)
+
+if(MPP_INCLUDE_DIR AND MPP_LIB)
+    add_executable(mpp_encoder_demo
+        src/mpp_encoder_demo.cpp
+        src/modules/camera_capture.cpp
+        src/modules/mpp_encoder.cpp
+        src/modules/nv12_overlay.cpp
+    )
+
+    target_include_directories(mpp_encoder_demo PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${MPP_INCLUDE_DIR}
+    )
+
+    target_link_libraries(mpp_encoder_demo PRIVATE
+        project_warnings
+        ${MPP_LIB}
+    )
+
+    set_target_properties(mpp_encoder_demo PROPERTIES
+        BUILD_RPATH "/usr/lib:/usr/local/lib"
+    )
+else()
+    message(STATUS "MPP headers/libs not found; skipping mpp_encoder_demo target")
+endif()
+
 set(LIBRGA_ROOT "${CMAKE_SOURCE_DIR}/third_party/librga")
 set(LIBRGA_INCLUDE_DIR "${LIBRGA_ROOT}/include")
 
@@ -59,12 +103,47 @@ if(EXISTS "${LIBRGA_INCLUDE_DIR}/im2d.h" AND EXISTS "${LIBRGA_SHARED}")
         src/modules/rga_processor.cpp
     )
 
+    add_executable(camera_rga_demo
+        src/camera_rga_demo.cpp
+        src/modules/camera_capture.cpp
+        src/modules/rga_processor.cpp
+    )
+
     target_include_directories(rga_demo PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${LIBRGA_INCLUDE_DIR}
     )
 
+    target_include_directories(camera_rga_demo PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${LIBRGA_INCLUDE_DIR}
+    )
+
+    if(TARGET mpp_encoder_demo)
+        target_sources(mpp_encoder_demo PRIVATE
+            src/modules/rga_processor.cpp
+            src/modules/rknn_runner.cpp
+        )
+
+        target_include_directories(mpp_encoder_demo PRIVATE
+            ${LIBRGA_INCLUDE_DIR}
+        )
+
+        target_link_libraries(mpp_encoder_demo PRIVATE
+            ${LIBRGA_SHARED}
+        )
+
+        set_target_properties(mpp_encoder_demo PROPERTIES
+            BUILD_RPATH "${LIBRGA_LIB_DIR}:/usr/lib:/usr/local/lib"
+        )
+    endif()
+
     target_link_libraries(rga_demo PRIVATE
+        project_warnings
+        ${LIBRGA_SHARED}
+    )
+
+    target_link_libraries(camera_rga_demo PRIVATE
         project_warnings
         ${LIBRGA_SHARED}
     )
@@ -72,6 +151,66 @@ if(EXISTS "${LIBRGA_INCLUDE_DIR}/im2d.h" AND EXISTS "${LIBRGA_SHARED}")
     set_target_properties(rga_demo PROPERTIES
         BUILD_RPATH "${LIBRGA_LIB_DIR}"
     )
+
+    set_target_properties(camera_rga_demo PROPERTIES
+        BUILD_RPATH "${LIBRGA_LIB_DIR}"
+    )
+
+    set(RKNN_API_LIB "/usr/lib/librknn_api.so")
+    if(EXISTS "${RKNN_API_LIB}")
+        if(TARGET mpp_encoder_demo)
+            target_link_libraries(mpp_encoder_demo PRIVATE
+                ${RKNN_API_LIB}
+            )
+        endif()
+
+        add_executable(camera_rga_rknn_demo
+            src/camera_rga_rknn_demo.cpp
+            src/modules/camera_capture.cpp
+            src/modules/rga_processor.cpp
+            src/modules/rknn_runner.cpp
+        )
+
+        add_executable(camera_rga_rknn_rtsp_demo
+            src/camera_rga_rknn_rtsp_demo.cpp
+            src/modules/camera_capture.cpp
+            src/modules/rga_processor.cpp
+            src/modules/rknn_runner.cpp
+            src/modules/frame_overlay.cpp
+        )
+
+        target_include_directories(camera_rga_rknn_demo PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+            ${LIBRGA_INCLUDE_DIR}
+        )
+
+        target_include_directories(camera_rga_rknn_rtsp_demo PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+            ${LIBRGA_INCLUDE_DIR}
+        )
+
+        target_link_libraries(camera_rga_rknn_demo PRIVATE
+            project_warnings
+            ${LIBRGA_SHARED}
+            ${RKNN_API_LIB}
+        )
+
+        target_link_libraries(camera_rga_rknn_rtsp_demo PRIVATE
+            project_warnings
+            ${LIBRGA_SHARED}
+            ${RKNN_API_LIB}
+        )
+
+        set_target_properties(camera_rga_rknn_demo PROPERTIES
+            BUILD_RPATH "${LIBRGA_LIB_DIR}:/usr/lib"
+        )
+
+        set_target_properties(camera_rga_rknn_rtsp_demo PROPERTIES
+            BUILD_RPATH "${LIBRGA_LIB_DIR}:/usr/lib"
+        )
+    else()
+        message(STATUS "librknn_api.so not found under /usr/lib; skipping camera_rga_rknn_demo target")
+    endif()
 else()
     message(STATUS "librga not found under third_party/librga; skipping rga_demo target")
 endif()

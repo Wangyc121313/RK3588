@@ -129,7 +129,7 @@ int main(int argc, char* argv[]) {
 
     std::cout << "scan sample points:" << '\n';
     int printed = 0;
-    for (size_t index = 0; index < node_count && printed < 20; ++index) {
+    for (size_t index = 0; index < node_count && printed < 200; ++index) {
         if (!isValidPoint(nodes[index])) {
             continue;
         }

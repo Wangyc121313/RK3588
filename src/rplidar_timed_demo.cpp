@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "sl_lidar.h"
 #include "sl_lidar_driver.h"
@@ -87,7 +88,10 @@ int main(int argc, char* argv[]) {
     std::cout << "running for " << duration_seconds << " s; lidar will auto-stop" << '\n';
 
     const auto start = std::chrono::steady_clock::now();
+    auto stats_window_start = start;
     int sample_idx = 0;
+    std::uint64_t window_scans = 0;
+    std::uint64_t window_valid_points = 0;
 
     while (true) {
         const auto now = std::chrono::steady_clock::now();
@@ -126,6 +130,29 @@ int main(int argc, char* argv[]) {
             std::cout << " | min_distance=" << min_distance << "m";
         }
         std::cout << '\n';
+
+        ++window_scans;
+        window_valid_points += static_cast<std::uint64_t>(valid_points);
+        const auto stats_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - stats_window_start).count();
+        if (stats_elapsed >= 1000) {
+            const double window_sec = static_cast<double>(stats_elapsed) / 1000.0;
+            const double scan_hz = static_cast<double>(window_scans) / window_sec;
+            const double points_per_sec = static_cast<double>(window_valid_points) / window_sec;
+            const double points_per_scan = (window_scans > 0)
+                ? static_cast<double>(window_valid_points) / static_cast<double>(window_scans)
+                : 0.0;
+            const double rpm_est = scan_hz * 60.0;
+
+            std::cout << "[rate] scan_hz=" << scan_hz
+                      << " | rpm_est=" << rpm_est
+                      << " | points_per_scan=" << points_per_scan
+                      << " | points_per_sec=" << points_per_sec
+                      << '\n';
+
+            stats_window_start = now;
+            window_scans = 0;
+            window_valid_points = 0;
+        }
     }
 
     driver->stop();

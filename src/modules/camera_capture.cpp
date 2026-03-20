@@ -23,6 +23,11 @@ std::uint64_t nowMs() {
             .count());
 }
 
+std::int64_t timevalToUs(const timeval& tv) {
+    return static_cast<std::int64_t>(tv.tv_sec) * 1000000LL +
+           static_cast<std::int64_t>(tv.tv_usec);
+}
+
 }  // namespace
 
 CameraCapture::~CameraCapture() {
@@ -68,9 +73,34 @@ bool CameraCapture::start(core::BoundedQueue<core::FramePacket>* frame_queue) {
     return true;
 }
 
+bool CameraCapture::requeueBuffer(std::uint32_t buffer_index) {
+    if (fd_ < 0 || buffer_index >= buffers_.size()) {
+        return false;
+    }
+
+    if (!buffers_[buffer_index].dequeued) {
+        return false;
+    }
+
+    v4l2_buffer buffer {};
+    buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buffer.memory = V4L2_MEMORY_MMAP;
+    buffer.index = buffer_index;
+
+    {
+        std::lock_guard<std::mutex> lock(io_mutex_);
+        if (xioctl(fd_, VIDIOC_QBUF, &buffer) < 0) {
+            std::cerr << "VIDIOC_QBUF failed: " << std::strerror(errno) << '\n';
+            return false;
+        }
+    }
+
+    buffers_[buffer_index].dequeued = false;
+    return true;
+}
+
 void CameraCapture::stop() {
     if (!running_.exchange(false)) {
-        // Even if thread is not running, make sure device resources are released if init() succeeded.
         if (fd_ >= 0) {
             streamOff();
             releaseBuffers();
@@ -110,25 +140,35 @@ bool CameraCapture::configureDevice() {
         return false;
     }
 
+    bool configured = false;
+    const std::uint32_t candidates[] = {V4L2_PIX_FMT_NV12, V4L2_PIX_FMT_YUYV};
+
     v4l2_format format {};
     format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     format.fmt.pix.width = width_;
     format.fmt.pix.height = height_;
-    format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
     format.fmt.pix.field = V4L2_FIELD_NONE;
 
-    if (xioctl(fd_, VIDIOC_S_FMT, &format) < 0) {
-        std::cerr << "VIDIOC_S_FMT failed: " << std::strerror(errno) << '\n';
-        return false;
+    for (const auto pixel_format : candidates) {
+        format.fmt.pix.pixelformat = pixel_format;
+        if (xioctl(fd_, VIDIOC_S_FMT, &format) == 0 && format.fmt.pix.pixelformat == pixel_format) {
+            configured = true;
+            break;
+        }
     }
 
-    if (format.fmt.pix.pixelformat != V4L2_PIX_FMT_YUYV) {
-        std::cerr << "camera did not accept YUYV format\n";
+    if (!configured) {
+        std::cerr << "camera did not accept NV12/YUYV formats\n";
         return false;
     }
 
     width_ = format.fmt.pix.width;
     height_ = format.fmt.pix.height;
+    hor_stride_ = (format.fmt.pix.bytesperline > 0)
+        ? format.fmt.pix.bytesperline
+        : width_;
+    ver_stride_ = height_;
+    pixel_format_ = format.fmt.pix.pixelformat;
     return true;
 }
 
@@ -168,6 +208,20 @@ bool CameraCapture::allocateBuffers() {
             return false;
         }
 
+        v4l2_exportbuffer expbuf {};
+        expbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        expbuf.index = i;
+        expbuf.plane = 0;
+        expbuf.flags = O_CLOEXEC;
+
+        if (xioctl(fd_, VIDIOC_EXPBUF, &expbuf) < 0) {
+            std::cerr << "VIDIOC_EXPBUF failed: " << std::strerror(errno) << '\n';
+            return false;
+        }
+
+        buffers_[i].dma_fd = expbuf.fd;
+        buffers_[i].dequeued = false;
+
         if (xioctl(fd_, VIDIOC_QBUF, &buffer) < 0) {
             std::cerr << "VIDIOC_QBUF failed: " << std::strerror(errno) << '\n';
             return false;
@@ -203,6 +257,11 @@ void CameraCapture::releaseBuffers() {
             buffer.start = nullptr;
             buffer.length = 0;
         }
+        if (buffer.dma_fd >= 0) {
+            close(buffer.dma_fd);
+            buffer.dma_fd = -1;
+        }
+        buffer.dequeued = false;
     }
     buffers_.clear();
 }
@@ -232,23 +291,41 @@ void CameraCapture::captureLoop() {
         v4l2_buffer buffer {};
         buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buffer.memory = V4L2_MEMORY_MMAP;
-        if (xioctl(fd_, VIDIOC_DQBUF, &buffer) < 0) {
-            if (errno != EAGAIN) {
-                std::cerr << "VIDIOC_DQBUF failed: " << std::strerror(errno) << '\n';
+
+        {
+            std::lock_guard<std::mutex> lock(io_mutex_);
+            if (xioctl(fd_, VIDIOC_DQBUF, &buffer) < 0) {
+                if (errno != EAGAIN) {
+                    std::cerr << "VIDIOC_DQBUF failed: " << std::strerror(errno) << '\n';
+                }
+                continue;
             }
+        }
+
+        if (buffer.index >= buffers_.size()) {
+            std::cerr << "invalid buffer index from VIDIOC_DQBUF: " << buffer.index << '\n';
             continue;
         }
 
-        const auto* yuyv = static_cast<const std::uint8_t*>(buffers_[buffer.index].start);
+        buffers_[buffer.index].dequeued = true;
 
         core::FramePacket frame;
         frame.frame_id = frame_id_.fetch_add(1);
         frame.timestamp_ms = nowMs();
-        frame.pixels = yuyvToRgb(yuyv);
-        frame_queue_->push(std::move(frame));
+        frame.pts_us = timevalToUs(buffer.timestamp);
+        frame.dts_us = frame.pts_us;
+        frame.width = width_;
+        frame.height = height_;
+        frame.hor_stride = hor_stride_;
+        frame.ver_stride = ver_stride_;
+        frame.pixel_format = pixel_format_;
+        frame.buffer_index = buffer.index;
+        frame.buffer_size = static_cast<std::uint32_t>(buffers_[buffer.index].length);
+        frame.dma_fd = buffers_[buffer.index].dma_fd;
+        frame.cpu_addr = reinterpret_cast<std::uintptr_t>(buffers_[buffer.index].start);
 
-        if (xioctl(fd_, VIDIOC_QBUF, &buffer) < 0) {
-            std::cerr << "VIDIOC_QBUF failed: " << std::strerror(errno) << '\n';
+        if (!frame_queue_->push(std::move(frame))) {
+            requeueBuffer(buffer.index);
         }
     }
 }
@@ -259,46 +336,6 @@ int CameraCapture::xioctl(int fd, unsigned long request, void* arg) {
         result = ioctl(fd, request, arg);
     } while (result == -1 && errno == EINTR);
     return result;
-}
-
-std::uint8_t CameraCapture::clampToByte(int value) {
-    if (value < 0) {
-        return 0;
-    }
-    if (value > 255) {
-        return 255;
-    }
-    return static_cast<std::uint8_t>(value);
-}
-
-std::vector<std::uint8_t> CameraCapture::yuyvToRgb(const std::uint8_t* yuyv) const {
-    std::vector<std::uint8_t> rgb(static_cast<std::size_t>(width_) * height_ * 3);
-    std::size_t rgb_index = 0;
-
-    for (std::size_t i = 0; i + 3 < static_cast<std::size_t>(width_) * height_ * 2; i += 4) {
-        const int y0 = yuyv[i + 0];
-        const int u = yuyv[i + 1] - 128;
-        const int y1 = yuyv[i + 2];
-        const int v = yuyv[i + 3] - 128;
-
-        const auto convert = [&](int y) {
-            const int c = y - 16;
-            const int d = u;
-            const int e = v;
-            const int r = (298 * c + 409 * e + 128) >> 8;
-            const int g = (298 * c - 100 * d - 208 * e + 128) >> 8;
-            const int b = (298 * c + 516 * d + 128) >> 8;
-
-            rgb[rgb_index++] = clampToByte(r);
-            rgb[rgb_index++] = clampToByte(g);
-            rgb[rgb_index++] = clampToByte(b);
-        };
-
-        convert(y0);
-        convert(y1);
-    }
-
-    return rgb;
 }
 
 }  // namespace rk3588::modules
