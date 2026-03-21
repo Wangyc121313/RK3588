@@ -28,6 +28,11 @@ std::int64_t timevalToUs(const timeval& tv) {
            static_cast<std::int64_t>(tv.tv_usec);
 }
 
+bool isPacked422(std::uint32_t fourcc) {
+    return fourcc == V4L2_PIX_FMT_YUYV || fourcc == V4L2_PIX_FMT_YVYU ||
+           fourcc == V4L2_PIX_FMT_UYVY || fourcc == V4L2_PIX_FMT_VYUY;
+}
+
 }  // namespace
 
 CameraCapture::~CameraCapture() {
@@ -169,6 +174,21 @@ bool CameraCapture::configureDevice() {
         : width_;
     ver_stride_ = height_;
     pixel_format_ = format.fmt.pix.pixelformat;
+
+    v4l2_streamparm streamparm {};
+    streamparm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    streamparm.parm.capture.timeperframe.numerator = 1;
+    streamparm.parm.capture.timeperframe.denominator = 30;
+    if (xioctl(fd_, VIDIOC_S_PARM, &streamparm) == 0) {
+        const auto& tpf = streamparm.parm.capture.timeperframe;
+        if (tpf.numerator > 0 && tpf.denominator > 0) {
+            const double fps = static_cast<double>(tpf.denominator) / static_cast<double>(tpf.numerator);
+            std::cout << "camera configured: " << width_ << "x" << height_
+                      << " fourcc=0x" << std::hex << pixel_format_ << std::dec
+                      << " fps=" << fps << '\n';
+        }
+    }
+
     return true;
 }
 
@@ -274,6 +294,7 @@ void CameraCapture::closeDevice() {
 }
 
 void CameraCapture::captureLoop() {
+    bool logged_bytesused = false;
     while (running_.load()) {
         fd_set read_fds;
         FD_ZERO(&read_fds);
@@ -309,6 +330,17 @@ void CameraCapture::captureLoop() {
 
         buffers_[buffer.index].dequeued = true;
 
+        if (!logged_bytesused) {
+            const std::uint32_t expected_bytes = (pixel_format_ == V4L2_PIX_FMT_NV12)
+                ? (width_ * height_ * 3U / 2U)
+                : ((isPacked422(pixel_format_) ? (width_ * height_ * 2U) : 0U));
+            std::cout << "camera frame bytesused=" << buffer.bytesused
+                      << " expected=" << expected_bytes
+                      << " bytesperline=" << hor_stride_
+                      << " fourcc=0x" << std::hex << pixel_format_ << std::dec << '\n';
+            logged_bytesused = true;
+        }
+
         core::FramePacket frame;
         frame.frame_id = frame_id_.fetch_add(1);
         frame.timestamp_ms = nowMs();
@@ -324,8 +356,14 @@ void CameraCapture::captureLoop() {
         frame.dma_fd = buffers_[buffer.index].dma_fd;
         frame.cpu_addr = reinterpret_cast<std::uintptr_t>(buffers_[buffer.index].start);
 
-        if (!frame_queue_->push(std::move(frame))) {
+        core::FramePacket dropped_frame;
+        if (!frame_queue_->pushWithDrop(std::move(frame), &dropped_frame)) {
             requeueBuffer(buffer.index);
+            continue;
+        }
+
+        if (dropped_frame.buffer_size > 0) {
+            (void)requeueBuffer(dropped_frame.buffer_index);
         }
     }
 }

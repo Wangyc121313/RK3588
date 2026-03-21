@@ -373,9 +373,13 @@ bool RKNNRunner::inferRgb(const std::uint8_t* rgb_data, std::size_t rgb_size,
         detections->push_back(std::move(det));
     }
 
-    std::cout << "RKNN infer ok: outputs=" << io_num_.n_output
-              << " total_bytes=" << total_output_bytes
-              << " det_count=" << detections->size() << '\n';
+    static std::uint64_t infer_count = 0;
+    ++infer_count;
+    if ((infer_count % 30U) == 0U) {
+        std::cout << "RKNN infer ok: outputs=" << io_num_.n_output
+                  << " total_bytes=" << total_output_bytes
+                  << " det_count=" << detections->size() << '\n';
+    }
 
     ret = rknn_outputs_release(ctx_, io_num_.n_output, outputs.data());
     if (ret != RKNN_SUCC) {

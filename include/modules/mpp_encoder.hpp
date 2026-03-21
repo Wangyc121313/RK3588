@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <vector>
 
 #include "core/data_types.hpp"
 
@@ -39,6 +40,7 @@ public:
                        std::int64_t pts_us,
                        std::int64_t dts_us,
                        bool eos = false);
+    bool getCodecHeader(std::vector<std::uint8_t>* header);
 
     // Returns -1 on error, 0 when no packet available, 1 when one packet is returned.
     int getPacket(EncodedPacket* out_packet);

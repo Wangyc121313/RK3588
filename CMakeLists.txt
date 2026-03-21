@@ -84,6 +84,33 @@ else()
     message(STATUS "MPP headers/libs not found; skipping mpp_encoder_demo target")
 endif()
 
+set(ZLM_ROOT "${CMAKE_SOURCE_DIR}/third_party/ZLMediaKit")
+set(ZLM_API_INCLUDE_DIR "${ZLM_ROOT}/api/include")
+set(ZLM_RELEASE_DIR "${ZLM_ROOT}/release/linux/Release")
+set(ZLM_API_LIB "${ZLM_RELEASE_DIR}/libmk_api.so")
+
+if(TARGET mpp_encoder_demo)
+    if(EXISTS "${ZLM_API_INCLUDE_DIR}/mk_mediakit.h" AND EXISTS "${ZLM_API_LIB}")
+        target_sources(mpp_encoder_demo PRIVATE
+            src/modules/zlm_rtsp_publisher.cpp
+        )
+
+        target_include_directories(mpp_encoder_demo PRIVATE
+            ${ZLM_API_INCLUDE_DIR}
+        )
+
+        target_link_libraries(mpp_encoder_demo PRIVATE
+            ${ZLM_API_LIB}
+        )
+
+        set_target_properties(mpp_encoder_demo PROPERTIES
+            BUILD_RPATH "${ZLM_RELEASE_DIR}:/usr/lib:/usr/local/lib"
+        )
+    else()
+        message(FATAL_ERROR "ZLMediaKit C API not found; build third_party/ZLMediaKit and provide release/linux/Release/libmk_api.so")
+    endif()
+endif()
+
 set(LIBRGA_ROOT "${CMAKE_SOURCE_DIR}/third_party/librga")
 set(LIBRGA_INCLUDE_DIR "${LIBRGA_ROOT}/include")
 
@@ -134,7 +161,7 @@ if(EXISTS "${LIBRGA_INCLUDE_DIR}/im2d.h" AND EXISTS "${LIBRGA_SHARED}")
         )
 
         set_target_properties(mpp_encoder_demo PROPERTIES
-            BUILD_RPATH "${LIBRGA_LIB_DIR}:/usr/lib:/usr/local/lib"
+            BUILD_RPATH "${ZLM_RELEASE_DIR}:${LIBRGA_LIB_DIR}:/usr/lib:/usr/local/lib"
         )
     endif()
 

@@ -15,11 +15,18 @@ public:
     explicit BoundedQueue(std::size_t capacity) : capacity_(capacity) {}
 
     bool push(T item) {
+        return pushWithDrop(std::move(item), nullptr);
+    }
+
+    bool pushWithDrop(T item, T* dropped_item) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_) {
             return false;
         }
         if (queue_.size() >= capacity_) {
+            if (dropped_item != nullptr) {
+                *dropped_item = std::move(queue_.front());
+            }
             queue_.pop_front();
         }
         queue_.push_back(std::move(item));

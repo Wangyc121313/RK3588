@@ -9,8 +9,8 @@ namespace {
 
 constexpr int kMppOk = 0;
 constexpr int kMppErrTimeout = -1101;
-constexpr int kPollTimeoutMs = 500;
-constexpr std::uint32_t kMppFmtNv12 = 10;  // MPP_FMT_YUV420SP
+constexpr int kPollTimeoutMs = 5;
+constexpr std::uint32_t kMppFmtNv12 = MPP_FMT_YUV420SP;
 
 }  // namespace
 
@@ -297,6 +297,48 @@ bool MPPEncoder::encodeNv12Cpu(const std::uint8_t* nv12,
     const int ret = mpp_api_->encode_put_frame(mpp_ctx_, input);
     (void)mpp_frame_deinit(&input);
     return ret == kMppOk;
+}
+
+bool MPPEncoder::getCodecHeader(std::vector<std::uint8_t>* header) {
+    if (header == nullptr || mpp_ctx_ == nullptr || mpp_api_ == nullptr) {
+        return false;
+    }
+
+    header->clear();
+    MppBuffer hdr_buf = nullptr;
+    MppPacket packet = nullptr;
+    constexpr std::size_t kHeaderBufSize = 4096;
+
+    if (mpp_buffer_get(nullptr, &hdr_buf, kHeaderBufSize) != kMppOk || hdr_buf == nullptr) {
+        std::cerr << "mpp_buffer_get for header failed\n";
+        return false;
+    }
+
+    if (mpp_packet_init_with_buffer(&packet, hdr_buf) != kMppOk || packet == nullptr) {
+        std::cerr << "mpp_packet_init_with_buffer for header failed\n";
+        mpp_buffer_put(hdr_buf);
+        return false;
+    }
+
+    mpp_packet_set_length(packet, 0);
+    const int ret = mpp_api_->control(mpp_ctx_, MPP_ENC_GET_HDR_SYNC, packet);
+    if (ret != kMppOk) {
+        std::cerr << "MPP_ENC_GET_HDR_SYNC failed\n";
+        (void)mpp_packet_deinit(&packet);
+        mpp_buffer_put(hdr_buf);
+        return false;
+    }
+
+    const void* ptr = mpp_packet_get_pos(packet);
+    const std::size_t len = mpp_packet_get_length(packet);
+    if (ptr != nullptr && len > 0) {
+        const auto* begin = static_cast<const std::uint8_t*>(ptr);
+        header->assign(begin, begin + len);
+    }
+
+    (void)mpp_packet_deinit(&packet);
+    mpp_buffer_put(hdr_buf);
+    return !header->empty();
 }
 
 int MPPEncoder::getPacket(EncodedPacket* out_packet) {
