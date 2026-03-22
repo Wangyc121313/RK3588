@@ -1,22 +1,32 @@
 #include <chrono>
 #include <cstdint>
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <linux/videodev2.h>
 
 #include "core/bounded_queue.hpp"
 #include "core/data_types.hpp"
+#include "core/lidar_ring_buffer.hpp"
 #include "modules/camera_capture.hpp"
 #include "modules/mpp_encoder.hpp"
 #include "modules/nv12_overlay.hpp"
 #include "modules/rga_processor.hpp"
 #include "modules/rknn_runner.hpp"
+#include "modules/sensor_fusion.hpp"
 #include "modules/zlm_rtsp_publisher.hpp"
+
+#include "sl_lidar.h"
+#include "sl_lidar_driver.h"
 
 namespace {
 
@@ -40,6 +50,39 @@ const char* fourccName(std::uint32_t fourcc) {
         default:
             return "UNKNOWN";
     }
+}
+
+class DriverDeleter {
+public:
+    void operator()(sl::ILidarDriver* driver) const {
+        delete driver;
+    }
+};
+
+class ChannelDeleter {
+public:
+    void operator()(sl::IChannel* channel) const {
+        delete channel;
+    }
+};
+
+std::uint64_t nowSteadyMs() {
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+}
+
+float lidarAngleDegrees(const sl_lidar_response_measurement_node_hq_t& node) {
+    return static_cast<float>(node.angle_z_q14) * 90.0f / 16384.0f;
+}
+
+float lidarDistanceMeters(const sl_lidar_response_measurement_node_hq_t& node) {
+    return static_cast<float>(node.dist_mm_q2) / 4.0f / 1000.0f;
+}
+
+bool lidarPointValid(const sl_lidar_response_measurement_node_hq_t& node) {
+    return node.dist_mm_q2 != 0;
 }
 
 std::uint32_t forced422FourccFromEnv() {
@@ -179,6 +222,176 @@ bool envEnabled(const char* name) {
     return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 
+bool angleInWrappedRange(float angle_deg, float left_deg, float right_deg) {
+    const float a = rk3588::modules::SensorFusion::wrap360(angle_deg);
+    const float l = rk3588::modules::SensorFusion::wrap360(left_deg);
+    const float r = rk3588::modules::SensorFusion::wrap360(right_deg);
+    if (l <= r) {
+        return a >= l && a <= r;
+    }
+    return a >= l || a <= r;
+}
+
+std::optional<float> medianOf(std::vector<float>* values) {
+    if (values == nullptr || values->empty()) {
+        return std::nullopt;
+    }
+    std::sort(values->begin(), values->end());
+    const std::size_t mid = values->size() / 2;
+    if ((values->size() & 1U) == 1U) {
+        return (*values)[mid];
+    }
+    return 0.5F * ((*values)[mid - 1] + (*values)[mid]);
+}
+
+std::optional<float> estimateDistanceForDetection(
+    const rk3588::modules::SensorFusion& fusion,
+    const rk3588::core::PointCloudPacket& cloud,
+    const rk3588::modules::YoloDetection& det,
+    float window_half_deg,
+    float min_dist_m,
+    float max_dist_m) {
+    if (det.right <= det.left || cloud.points.empty()) {
+        return std::nullopt;
+    }
+
+    const float center_x = 0.5F * static_cast<float>(det.left + det.right);
+    const float center_angle = fusion.pixelToLidarAngle(center_x);
+    const float left_angle = fusion.pixelToLidarAngle(static_cast<float>(det.left));
+    const float right_angle = fusion.pixelToLidarAngle(static_cast<float>(det.right));
+
+    const float expand_deg = 1.0F;
+    const float sector_left = rk3588::modules::SensorFusion::wrap360(left_angle - expand_deg);
+    const float sector_right = rk3588::modules::SensorFusion::wrap360(right_angle + expand_deg);
+
+    std::vector<float> sector_distances;
+    sector_distances.reserve(cloud.points.size() / 8);
+
+    for (const auto& p : cloud.points) {
+        if (p.distance_m < min_dist_m || p.distance_m > max_dist_m) {
+            continue;
+        }
+        if (!angleInWrappedRange(p.angle_deg, sector_left, sector_right)) {
+            continue;
+        }
+        sector_distances.push_back(p.distance_m);
+    }
+
+    if (sector_distances.size() < 4) {
+        return fusion.medianDistanceInAngleWindow(cloud, center_angle, window_half_deg);
+    }
+
+    constexpr float kBinWidthM = 0.20F;
+    const int bin_count = std::max(4, static_cast<int>(std::ceil(max_dist_m / kBinWidthM)) + 1);
+    std::vector<int> hist(static_cast<std::size_t>(bin_count), 0);
+
+    for (float d : sector_distances) {
+        int idx = static_cast<int>(d / kBinWidthM);
+        idx = std::max(0, std::min(bin_count - 1, idx));
+        hist[static_cast<std::size_t>(idx)]++;
+    }
+
+    int peak_bin = 0;
+    for (int i = 1; i < bin_count; ++i) {
+        if (hist[static_cast<std::size_t>(i)] > hist[static_cast<std::size_t>(peak_bin)]) {
+            peak_bin = i;
+        }
+    }
+
+    std::vector<float> dominant;
+    dominant.reserve(sector_distances.size());
+    for (float d : sector_distances) {
+        int idx = static_cast<int>(d / kBinWidthM);
+        idx = std::max(0, std::min(bin_count - 1, idx));
+        if (std::abs(idx - peak_bin) <= 1) {
+            dominant.push_back(d);
+        }
+    }
+
+    if (dominant.size() < 3) {
+        return fusion.medianDistanceInAngleWindow(cloud, center_angle, window_half_deg);
+    }
+
+    return medianOf(&dominant);
+}
+
+std::string formatDetectionBrief(const rk3588::modules::YoloDetection& det) {
+    char buf[192] = {0};
+    const int w = std::max(0, det.right - det.left);
+    const int h = std::max(0, det.bottom - det.top);
+    std::snprintf(buf,
+                  sizeof(buf),
+                  "top:%s conf=%.2f box=%dx%d",
+                  det.class_name.empty() ? "obj" : det.class_name.c_str(),
+                  det.confidence,
+                  w,
+                  h);
+    return std::string(buf);
+}
+
+std::vector<std::string> buildHudLines(std::uint64_t frame_id,
+                                       std::uint64_t input_frames,
+                                       std::uint64_t output_packets,
+                                       std::uint64_t encode_frames,
+                                       int infer_every_n_frames,
+                                       bool did_infer,
+                                       const std::vector<rk3588::modules::YoloDetection>& detections,
+                                       std::uint64_t lidar_scans,
+                                       std::uint64_t lidar_delta_ms,
+                                       std::uint32_t pixel_format,
+                                       std::uint32_t actual_422_fourcc,
+                                       const char* stream_url,
+                                       double elapsed_sec) {
+    std::vector<std::string> lines;
+    lines.reserve(5);
+
+    const double encode_fps = elapsed_sec > 1e-3
+        ? static_cast<double>(encode_frames) / elapsed_sec
+        : 0.0;
+
+    char line0[192] = {0};
+    std::snprintf(line0,
+                  sizeof(line0),
+                  "frame=%llu enc_fps=%.1f infer_n=%d",
+                  static_cast<unsigned long long>(frame_id),
+                  encode_fps,
+                  infer_every_n_frames);
+    lines.emplace_back(line0);
+
+    char line1[192] = {0};
+    std::snprintf(line1,
+                  sizeof(line1),
+                  "det=%zu infer=%s in=%llu out=%llu lidar_dt=%llums",
+                  detections.size(),
+                  did_infer ? "yes" : "reuse",
+                  static_cast<unsigned long long>(input_frames),
+                  static_cast<unsigned long long>(output_packets),
+                  static_cast<unsigned long long>(lidar_delta_ms));
+    lines.emplace_back(line1);
+
+    char line1b[192] = {0};
+    std::snprintf(line1b,
+                  sizeof(line1b),
+                  "lidar_scans=%llu",
+                  static_cast<unsigned long long>(lidar_scans));
+    lines.emplace_back(line1b);
+
+    char line2[192] = {0};
+    const std::uint32_t fmt = actual_422_fourcc != 0 ? actual_422_fourcc : pixel_format;
+    std::snprintf(line2,
+                  sizeof(line2),
+                  "fmt=%s stream=%s",
+                  fourccName(fmt),
+                  stream_url == nullptr ? "n/a" : stream_url);
+    lines.emplace_back(line2);
+
+    if (!detections.empty()) {
+        lines.emplace_back(formatDetectionBrief(detections.front()));
+    }
+
+    return lines;
+}
+
 bool convertPacked422ToNv12(const std::uint8_t* src,
                             std::uint32_t width,
                             std::uint32_t height,
@@ -261,15 +474,116 @@ int main(int argc, char* argv[]) {
     const int fps = argc > 10 ? std::max(1, std::atoi(argv[10])) : 30;
     const std::string dump_h264_path = argc > 11 ? argv[11] : "";
     const int infer_every_n_frames = argc > 12 ? std::max(1, std::atoi(argv[12])) : 5;
+    const std::string lidar_port = argc > 13 ? argv[13] : "/dev/ttyUSB0";
+    const int lidar_baud = argc > 14 ? std::max(1, std::atoi(argv[14])) : 115200;
+    const float lidar_offset_deg = argc > 15 ? static_cast<float>(std::atof(argv[15])) : 191.7F;
+    const float lidar_fov_deg = argc > 16 ? static_cast<float>(std::atof(argv[16])) : 60.0F;
+    const float lidar_window_half_deg = argc > 17 ? std::max(0.5F, static_cast<float>(std::atof(argv[17]))) : 2.5F;
+    const float lidar_min_dist_m = argc > 18 ? std::max(0.01F, static_cast<float>(std::atof(argv[18]))) : 0.15F;
+    const float lidar_max_dist_m = argc > 19 ? std::max(lidar_min_dist_m + 0.1F, static_cast<float>(std::atof(argv[19]))) : 8.0F;
+    const std::uint64_t lidar_max_age_ms = argc > 20
+        ? static_cast<std::uint64_t>(std::max(20, std::atoi(argv[20])))
+        : 120U;
     const bool swap_uv = envEnabled("RK3588_YUV_SWAP_UV");
     const std::uint32_t forced_422_fourcc = forced422FourccFromEnv();
 
     rk3588::core::BoundedQueue<rk3588::core::FramePacket> queue(1);
+    rk3588::core::LidarRingBuffer lidar_buffer;
     rk3588::modules::CameraCapture camera;
     rk3588::modules::MPPEncoder encoder;
     rk3588::modules::RGAProcessor rga;
     rk3588::modules::RKNNRunner rknn;
     rk3588::modules::ZlmRtspPublisher streamer;
+    rk3588::modules::FusionConfig fusion_cfg;
+    fusion_cfg.image_width = static_cast<int>(width);
+    fusion_cfg.camera_fov_deg = lidar_fov_deg;
+    fusion_cfg.lidar_angle_offset_deg = lidar_offset_deg;
+    fusion_cfg.default_window_half_deg = lidar_window_half_deg;
+    fusion_cfg.min_valid_distance_m = lidar_min_dist_m;
+    rk3588::modules::SensorFusion fusion(fusion_cfg);
+
+    std::atomic<bool> lidar_running {true};
+    std::atomic<std::uint64_t> lidar_scan_count {0};
+    std::thread lidar_thread([&] {
+        auto driver_result = sl::createLidarDriver();
+        if (!driver_result || *driver_result == nullptr) {
+            std::cerr << "lidar: failed to create driver\n";
+            return;
+        }
+        std::unique_ptr<sl::ILidarDriver, DriverDeleter> driver(*driver_result);
+
+        auto channel_result = sl::createSerialPortChannel(lidar_port, lidar_baud);
+        if (!channel_result || *channel_result == nullptr) {
+            std::cerr << "lidar: failed to open serial channel " << lidar_port << '\n';
+            return;
+        }
+        std::unique_ptr<sl::IChannel, ChannelDeleter> channel(*channel_result);
+
+        sl_result result = driver->connect(channel.get());
+        if (SL_IS_FAIL(result)) {
+            std::cerr << "lidar: connect failed, code=" << result << '\n';
+            return;
+        }
+
+        result = driver->startScan(false, true);
+        if (SL_IS_FAIL(result)) {
+            std::cerr << "lidar: startScan failed, code=" << result << '\n';
+            driver->disconnect();
+            return;
+        }
+
+        std::cout << "lidar fusion enabled: port=" << lidar_port
+                  << " offset_deg=" << lidar_offset_deg
+                  << " fov_deg=" << lidar_fov_deg
+                  << " window_half_deg=" << lidar_window_half_deg
+                  << " min_dist=" << lidar_min_dist_m
+                  << " max_dist=" << lidar_max_dist_m
+                  << " max_age_ms=" << lidar_max_age_ms << '\n';
+
+        std::uint64_t scan_id = 0;
+        while (lidar_running.load()) {
+            sl_lidar_response_measurement_node_hq_t nodes[8192];
+            size_t node_count = sizeof(nodes) / sizeof(nodes[0]);
+            result = driver->grabScanDataHq(nodes, node_count, 200);
+            if (SL_IS_FAIL(result)) {
+                if (result == SL_RESULT_OPERATION_TIMEOUT) {
+                    continue;
+                }
+                std::cerr << "lidar: grabScanDataHq failed, code=" << result << '\n';
+                continue;
+            }
+
+            driver->ascendScanData(nodes, node_count);
+
+            rk3588::core::PointCloudPacket cloud;
+            cloud.scan_id = scan_id++;
+            cloud.timestamp_ms = nowSteadyMs();
+            cloud.points.reserve(node_count);
+
+            for (size_t i = 0; i < node_count; ++i) {
+                if (!lidarPointValid(nodes[i])) {
+                    continue;
+                }
+                const float dist = lidarDistanceMeters(nodes[i]);
+                if (dist < lidar_min_dist_m || dist > lidar_max_dist_m) {
+                    continue;
+                }
+
+                rk3588::core::LidarPoint point;
+                point.angle_deg = rk3588::modules::SensorFusion::wrap360(lidarAngleDegrees(nodes[i]));
+                point.distance_m = dist;
+                cloud.points.push_back(point);
+            }
+
+            if (!cloud.points.empty()) {
+                lidar_buffer.write(std::move(cloud));
+                lidar_scan_count.fetch_add(1);
+            }
+        }
+
+        driver->stop();
+        driver->disconnect();
+    });
 
     if (!camera.init(device, width, height, 4) || !camera.start(&queue)) {
         std::cerr << "camera init/start failed\n";
@@ -394,6 +708,28 @@ int main(int argc, char* argv[]) {
             last_detections = std::move(detections);
         }
 
+        std::uint64_t lidar_delta_ms = 0;
+        rk3588::core::PointCloudPacket matched_cloud;
+        const bool has_lidar_cloud = lidar_buffer.readClosest(frame.timestamp_ms, matched_cloud, lidar_delta_ms) &&
+                                     lidar_delta_ms <= lidar_max_age_ms;
+
+        for (auto& det : last_detections) {
+            det.distance_m = -1.0F;
+            if (!has_lidar_cloud) {
+                continue;
+            }
+            const auto dist = estimateDistanceForDetection(
+                fusion,
+                matched_cloud,
+                det,
+                lidar_window_half_deg,
+                lidar_min_dist_m,
+                lidar_max_dist_m);
+            if (dist.has_value()) {
+                det.distance_m = *dist;
+            }
+        }
+
         bool ok = false;
         if (frame.pixel_format == V4L2_PIX_FMT_NV12 && frame.cpu_addr != 0) {
             rk3588::modules::drawDetectionsNv12(
@@ -403,6 +739,32 @@ int main(int argc, char* argv[]) {
                 static_cast<int>(frame.hor_stride > 0 ? frame.hor_stride : frame.width),
                 last_detections,
                 3);
+
+            const auto now = std::chrono::steady_clock::now();
+            const double elapsed_sec = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() / 1000.0;
+            const auto hud_lines = buildHudLines(frame.frame_id,
+                                                 input_frames,
+                                                 output_packets,
+                                                 encode_frames,
+                                                 infer_every_n_frames,
+                                                 do_infer,
+                                                 last_detections,
+                                                 lidar_scan_count.load(),
+                                                 lidar_delta_ms,
+                                                 frame.pixel_format,
+                                                 actual_422_fourcc,
+                                                 streamer.publishUrl().c_str(),
+                                                 elapsed_sec);
+            rk3588::modules::drawHudLinesNv12(
+                reinterpret_cast<std::uint8_t*>(frame.cpu_addr),
+                static_cast<int>(frame.width),
+                static_cast<int>(frame.height),
+                static_cast<int>(frame.hor_stride > 0 ? frame.hor_stride : frame.width),
+                hud_lines,
+                8,
+                8,
+                2);
+
             ok = encoder.encodeFrame(frame, false);
         } else if (isPacked422(frame.pixel_format) && frame.cpu_addr != 0) {
             if (actual_422_fourcc == 0) {
@@ -441,6 +803,31 @@ int main(int argc, char* argv[]) {
                 static_cast<int>(nv12_stride),
                 last_detections,
                 3);
+
+            const auto now = std::chrono::steady_clock::now();
+            const double elapsed_sec = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() / 1000.0;
+            const auto hud_lines = buildHudLines(frame.frame_id,
+                                                 input_frames,
+                                                 output_packets,
+                                                 encode_frames,
+                                                 infer_every_n_frames,
+                                                 do_infer,
+                                                 last_detections,
+                                                 lidar_scan_count.load(),
+                                                 lidar_delta_ms,
+                                                 frame.pixel_format,
+                                                 actual_422_fourcc,
+                                                 streamer.publishUrl().c_str(),
+                                                 elapsed_sec);
+            rk3588::modules::drawHudLinesNv12(
+                nv12_scratch.data(),
+                static_cast<int>(frame.width),
+                static_cast<int>(frame.height),
+                static_cast<int>(nv12_stride),
+                hud_lines,
+                8,
+                8,
+                2);
 
             ok = encoder.encodeNv12Cpu(
                 nv12_scratch.data(),
@@ -496,6 +883,10 @@ int main(int argc, char* argv[]) {
     camera.stop();
     queue.close();
     streamer.stop();
+    lidar_running = false;
+    if (lidar_thread.joinable()) {
+        lidar_thread.join();
+    }
     if (dump_file != nullptr) {
         std::fclose(dump_file);
         dump_file = nullptr;

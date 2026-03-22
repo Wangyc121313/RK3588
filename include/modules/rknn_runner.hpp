@@ -13,6 +13,7 @@ struct YoloDetection {
     int class_id = -1;
     std::string class_name;
     float confidence = 0.0F;
+    float distance_m = -1.0F;
     int left = 0;
     int top = 0;
     int right = 0;

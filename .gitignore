@@ -4,3 +4,4 @@ build/
 third_party/
 datasheets/
 image.png
+lidar_camera_calibration.md

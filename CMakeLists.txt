@@ -247,6 +247,21 @@ set(RPLIDAR_SDK_ROOT "${RPLIDAR_REPO_ROOT}/sdk")
 set(RPLIDAR_SDK_INCLUDE_DIR "${RPLIDAR_SDK_ROOT}/include")
 
 if(EXISTS "${RPLIDAR_SDK_INCLUDE_DIR}/sl_lidar.h")
+    if(TARGET mpp_encoder_demo)
+        target_include_directories(mpp_encoder_demo PRIVATE
+            ${RPLIDAR_SDK_INCLUDE_DIR}
+        )
+
+        target_link_directories(mpp_encoder_demo PRIVATE
+            ${RPLIDAR_REPO_ROOT}/output/Linux/Release
+        )
+
+        target_link_libraries(mpp_encoder_demo PRIVATE
+            sl_lidar_sdk
+            pthread
+        )
+    endif()
+
     add_executable(rplidar_demo
         src/rplidar_demo.cpp
     )
@@ -257,6 +272,14 @@ if(EXISTS "${RPLIDAR_SDK_INCLUDE_DIR}/sl_lidar.h")
 
     add_executable(rplidar_guard_demo
         src/rplidar_guard_demo.cpp
+    )
+
+    add_executable(rplidar_angle_calib
+        src/rplidar_angle_calib.cpp
+    )
+
+    add_executable(rplidar_fov_filter_demo
+        src/rplidar_fov_filter_demo.cpp
     )
 
     add_executable(rplidar_motor_ctl
@@ -275,6 +298,14 @@ if(EXISTS "${RPLIDAR_SDK_INCLUDE_DIR}/sl_lidar.h")
         ${RPLIDAR_SDK_INCLUDE_DIR}
     )
 
+    target_include_directories(rplidar_angle_calib PRIVATE
+        ${RPLIDAR_SDK_INCLUDE_DIR}
+    )
+
+    target_include_directories(rplidar_fov_filter_demo PRIVATE
+        ${RPLIDAR_SDK_INCLUDE_DIR}
+    )
+
     target_include_directories(rplidar_motor_ctl PRIVATE
         ${RPLIDAR_SDK_INCLUDE_DIR}
     )
@@ -288,6 +319,14 @@ if(EXISTS "${RPLIDAR_SDK_INCLUDE_DIR}/sl_lidar.h")
     )
 
     target_link_directories(rplidar_guard_demo PRIVATE
+        ${RPLIDAR_REPO_ROOT}/output/Linux/Release
+    )
+
+    target_link_directories(rplidar_angle_calib PRIVATE
+        ${RPLIDAR_REPO_ROOT}/output/Linux/Release
+    )
+
+    target_link_directories(rplidar_fov_filter_demo PRIVATE
         ${RPLIDAR_REPO_ROOT}/output/Linux/Release
     )
 
@@ -308,6 +347,18 @@ if(EXISTS "${RPLIDAR_SDK_INCLUDE_DIR}/sl_lidar.h")
     )
 
     target_link_libraries(rplidar_guard_demo PRIVATE
+        project_warnings
+        sl_lidar_sdk
+        pthread
+    )
+
+    target_link_libraries(rplidar_angle_calib PRIVATE
+        project_warnings
+        sl_lidar_sdk
+        pthread
+    )
+
+    target_link_libraries(rplidar_fov_filter_demo PRIVATE
         project_warnings
         sl_lidar_sdk
         pthread
