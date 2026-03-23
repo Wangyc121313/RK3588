@@ -23,6 +23,7 @@
 #include "video/rga_processor.hpp"
 #include "infer/rknn_runner.hpp"
 #include "fusion/sensor_fusion.hpp"
+#include "video/webrtc_publisher.hpp"
 #include "video/zlm_rtsp_publisher.hpp"
 
 #include "sl_lidar.h"
@@ -480,12 +481,21 @@ int main(int argc, char* argv[]) {
     const float lidar_fov_deg = argc > 16 ? static_cast<float>(std::atof(argv[16])) : 60.0F;
     const float lidar_window_half_deg = argc > 17 ? std::max(0.5F, static_cast<float>(std::atof(argv[17]))) : 2.5F;
     const float lidar_min_dist_m = argc > 18 ? std::max(0.01F, static_cast<float>(std::atof(argv[18]))) : 0.15F;
-    const float lidar_max_dist_m = argc > 19 ? std::max(lidar_min_dist_m + 0.1F, static_cast<float>(std::atof(argv[19]))) : 8.0F;
+    const float lidar_max_dist_m = argc > 19 ? std::max(lidar_min_dist_m + 0.1F, static_cast<float>(std::atof(argv[19]))) : 20.0F;
     const std::uint64_t lidar_max_age_ms = argc > 20
         ? static_cast<std::uint64_t>(std::max(20, std::atoi(argv[20])))
         : 120U;
+    const std::string publish_mode = argc > 21 ? argv[21] : "rtsp";
+    const std::string webrtc_url = argc > 22 ? argv[22] : "rtc://127.0.0.1:8000/live/camera";
     const bool swap_uv = envEnabled("RK3588_YUV_SWAP_UV");
     const std::uint32_t forced_422_fourcc = forced422FourccFromEnv();
+    const bool enable_rtsp = (publish_mode == "rtsp" || publish_mode == "both");
+    const bool enable_webrtc = (publish_mode == "webrtc" || publish_mode == "both");
+
+    if (!enable_rtsp && !enable_webrtc) {
+        std::cerr << "invalid publish_mode=" << publish_mode << ", expected rtsp|webrtc|both\n";
+        return 1;
+    }
 
     rk3588::core::BoundedQueue<rk3588::core::FramePacket> queue(1);
     rk3588::core::LidarRingBuffer lidar_buffer;
@@ -494,6 +504,7 @@ int main(int argc, char* argv[]) {
     rk3588::modules::RGAProcessor rga;
     rk3588::modules::RKNNRunner rknn;
     rk3588::modules::ZlmRtspPublisher streamer;
+    rk3588::modules::WebRtcPublisher webrtc_publisher(webrtc_url);
     rk3588::modules::FusionConfig fusion_cfg;
     fusion_cfg.image_width = static_cast<int>(width);
     fusion_cfg.camera_fov_deg = lidar_fov_deg;
@@ -657,12 +668,26 @@ int main(int argc, char* argv[]) {
             }
             std::cout << '\n';
 
-            if (!streamer.start(rtsp_url, frame.width, frame.height, static_cast<std::uint32_t>(fps))) {
-                std::cerr << "zlm rtsp publisher start failed, url=" << rtsp_url << '\n';
-                camera.requeueBuffer(frame.buffer_index);
-                break;
+            if (enable_rtsp) {
+                if (!streamer.start(rtsp_url, frame.width, frame.height, static_cast<std::uint32_t>(fps))) {
+                    std::cerr << "zlm rtsp publisher start failed, url=" << rtsp_url << '\n';
+                    camera.requeueBuffer(frame.buffer_index);
+                    break;
+                }
+                std::cout << "streaming h264 to " << streamer.publishUrl() << " fps=" << fps << '\n';
             }
-            std::cout << "streaming h264 to " << streamer.publishUrl() << " fps=" << fps << '\n';
+
+            if (enable_webrtc) {
+                webrtc_publisher.setVideoConfig(frame.width, frame.height, static_cast<std::uint32_t>(fps));
+                if (!webrtc_publisher.start()) {
+                    std::cerr << "webrtc publisher start failed, url=" << webrtc_url << '\n';
+                    camera.requeueBuffer(frame.buffer_index);
+                    break;
+                }
+                std::cout << "streaming h264 to " << webrtc_publisher.rtcPlayUrl()
+                          << " sdp_api=" << webrtc_publisher.sdpApiUrl()
+                          << " fps=" << fps << '\n';
+            }
 
             std::vector<std::uint8_t> codec_header;
             if (encoder.getCodecHeader(&codec_header) && !codec_header.empty()) {
@@ -670,8 +695,13 @@ int main(int argc, char* argv[]) {
                     (void)std::fwrite(codec_header.data(), 1, codec_header.size(), dump_file);
                     std::fflush(dump_file);
                 }
-                if (!streamer.pushPacket(codec_header.data(), codec_header.size(), 0, 0)) {
+                if (enable_rtsp && !streamer.pushPacket(codec_header.data(), codec_header.size(), 0, 0)) {
                     std::cerr << "failed to push codec header to rtsp streamer\n";
+                    camera.requeueBuffer(frame.buffer_index);
+                    break;
+                }
+                if (enable_webrtc && !webrtc_publisher.publish({codec_header.data(), codec_header.size(), 0, 0, true})) {
+                    std::cerr << "failed to push codec header to webrtc publisher\n";
                     camera.requeueBuffer(frame.buffer_index);
                     break;
                 }
@@ -742,6 +772,7 @@ int main(int argc, char* argv[]) {
 
             const auto now = std::chrono::steady_clock::now();
             const double elapsed_sec = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() / 1000.0;
+            const std::string output_url = enable_webrtc ? webrtc_publisher.rtcPlayUrl() : streamer.publishUrl();
             const auto hud_lines = buildHudLines(frame.frame_id,
                                                  input_frames,
                                                  output_packets,
@@ -753,7 +784,7 @@ int main(int argc, char* argv[]) {
                                                  lidar_delta_ms,
                                                  frame.pixel_format,
                                                  actual_422_fourcc,
-                                                 streamer.publishUrl().c_str(),
+                                                 output_url.c_str(),
                                                  elapsed_sec);
             rk3588::modules::drawHudLinesNv12(
                 reinterpret_cast<std::uint8_t*>(frame.cpu_addr),
@@ -806,6 +837,7 @@ int main(int argc, char* argv[]) {
 
             const auto now = std::chrono::steady_clock::now();
             const double elapsed_sec = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() / 1000.0;
+            const std::string output_url = enable_webrtc ? webrtc_publisher.rtcPlayUrl() : streamer.publishUrl();
             const auto hud_lines = buildHudLines(frame.frame_id,
                                                  input_frames,
                                                  output_packets,
@@ -817,7 +849,7 @@ int main(int argc, char* argv[]) {
                                                  lidar_delta_ms,
                                                  frame.pixel_format,
                                                  actual_422_fourcc,
-                                                 streamer.publishUrl().c_str(),
+                                                 output_url.c_str(),
                                                  elapsed_sec);
             rk3588::modules::drawHudLinesNv12(
                 nv12_scratch.data(),
@@ -859,12 +891,20 @@ int main(int argc, char* argv[]) {
             }
             const std::uint64_t dts_ms = pkt.dts_us >= 0 ? static_cast<std::uint64_t>(pkt.dts_us) / 1000U : 0;
             const std::uint64_t pts_ms = pkt.pts_us >= 0 ? static_cast<std::uint64_t>(pkt.pts_us) / 1000U : dts_ms;
-            if (!streamer.pushPacket(pkt.data, pkt.len, dts_ms, pts_ms)) {
-                std::cerr << "rtsp push packet failed" << '\n';
+            bool publish_ok = true;
+            if (enable_rtsp) {
+                publish_ok = streamer.pushPacket(pkt.data, pkt.len, dts_ms, pts_ms) && publish_ok;
+            }
+            if (enable_webrtc) {
+                publish_ok = webrtc_publisher.publish({pkt.data, pkt.len, dts_ms, pts_ms, false}) && publish_ok;
+            }
+            if (!publish_ok) {
+                std::cerr << "stream push packet failed" << '\n';
                 encoder.releasePacket(&pkt);
                 camera.stop();
                 queue.close();
                 streamer.stop();
+                webrtc_publisher.stop();
                 if (dump_file != nullptr) {
                     std::fclose(dump_file);
                     dump_file = nullptr;
@@ -883,6 +923,7 @@ int main(int argc, char* argv[]) {
     camera.stop();
     queue.close();
     streamer.stop();
+    webrtc_publisher.stop();
     lidar_running = false;
     if (lidar_thread.joinable()) {
         lidar_thread.join();

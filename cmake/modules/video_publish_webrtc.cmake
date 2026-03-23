@@ -3,4 +3,6 @@ target_include_directories(rk_video_publish_webrtc PUBLIC ${CMAKE_SOURCE_DIR}/in
 target_link_libraries(rk_video_publish_webrtc PUBLIC rk_video_base)
 if(RK_DEPS_ZLM_FOUND)
     target_include_directories(rk_video_publish_webrtc PUBLIC ${ZLM_API_INCLUDE_DIR})
+    target_link_libraries(rk_video_publish_webrtc PUBLIC ${ZLM_API_LIB})
+    target_compile_definitions(rk_video_publish_webrtc PRIVATE RK_HAS_ZLM=1)
 endif()
