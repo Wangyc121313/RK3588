@@ -1,9 +1,0 @@
-final_line=mpp_encoder_demo done: input_frames=218 output_packets=219 encode_frames=218 run_seconds=8
-input_frames=218
-output_packets=219
-encode_frames=218
-run_seconds=8
-avg_fps=27.25
-cpu_avg_pct=6.12
-rss_peak_mb=39.97
-temp_peak_c=34.2
