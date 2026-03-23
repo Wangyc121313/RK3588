@@ -1,0 +1,2 @@
+round,exit_code,avg_fps,fps_util_pct,frame_delivery_ratio,cpu_avg_pct,cpu_p95_pct,cpu_peak_pct,rss_peak_mb,threads_peak,fd_peak,temp_peak_c,rknpu_avg_pct,net_tx_avg_kbps
+1,0,16.33,65.32,1.000,5.52,7.42,7.57,39.93,13,71,36.1,-1,15.11

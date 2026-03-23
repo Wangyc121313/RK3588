@@ -1,0 +1,49 @@
+[36m2026-03-23 09:51:36.858 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: VP8[0m
+[36m2026-03-23 09:51:36.868 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: VP9[0m
+[36m2026-03-23 09:51:36.868 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: H264[0m
+[36m2026-03-23 09:51:36.876 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: H265[0m
+[36m2026-03-23 09:51:36.878 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: AV1[0m
+[36m2026-03-23 09:51:36.878 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: JPEG[0m
+[36m2026-03-23 09:51:36.883 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: mpeg4-generic[0m
+[36m2026-03-23 09:51:36.886 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: opus[0m
+[36m2026-03-23 09:51:36.886 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: PCMA[0m
+[36m2026-03-23 09:51:36.886 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: PCMU[0m
+[36m2026-03-23 09:51:36.886 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: L16[0m
+[36m2026-03-23 09:51:36.886 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: MP3[0m
+[36m2026-03-23 09:51:36.892 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: MPV[0m
+[36m2026-03-23 09:51:36.892 I [mpp_encoder_demo] [3934-mpp_encoder_dem] Factory.cpp:40 registerPlugin | Load codec: MPA[0m
+mpp[3934]: mpp_platform: client 12 driver is not ready!
+lidar: startScan failed, code=2147516420
+mpp[3934]: mpp_info: mpp version: unknown mpp version for missing VCS info
+mpp[3934]: mpp_enc: set prep cfg w:h [640:480] stride [640:480] fmt 0 rotate 0 mirror 0
+mpp[3934]: mpp_enc: set rc cbr bps [2097152:2500000:1500000] fps [25:1:fix] - [25:1:fix] gop 12
+mpp[3934]: mpp_enc: mode cbr bps [1500000:2097152:2500000] fps fix [25/1] -> fix [25/1] gop i [12] v [0]
+camera configured: 640x480 fourcc=0x56595559 fps=30
+camera frame bytesused=614400 expected=614400 bytesperline=1280 fourcc=0x56595559
+RKNN init ok: n_input=1 n_output=9
+camera format fourcc=0x56595559 infer_every_n_frames=5 swap_uv=0 gop=12
+[32m2026-03-23 09:51:37.615 D [mpp_encoder_demo] [3934-stamp thread] util.cpp:440 operator() | Stamp thread started[0m
+[36m2026-03-23 09:51:37.627 I [mpp_encoder_demo] [3934-mpp_encoder_dem] EventPoller.cpp:634 EventPollerPool | EventPoller created size: 8[0m
+[36m2026-03-23 09:51:37.627 I [mpp_encoder_demo] [3934-mpp_encoder_dem] TcpServer.cpp:260 start_l | TCP server listening on [::]: 8554[0m
+streaming h264 to rtsp://0.0.0.0:8554/live/camera fps=25
+rga_api version 1.10.5_[8]
+packed422 actual decode format=YUYV (camera says YUYV)
+[32m2026-03-23 09:51:37.788 D [mpp_encoder_demo] [3934-event poller 4] MediaSink.cpp:198 emitAllTrackReady | All track ready use 153ms[0m
+[36m2026-03-23 09:51:37.801 I [mpp_encoder_demo] [3934-event poller 4] MultiMediaSourceMuxer.cpp:775 onAllTrackReady | stream: schema://__defaultVhost__/app/stream , codec info: H264[640/480/25] [0m
+[36m2026-03-23 09:51:37.801 I [mpp_encoder_demo] [3934-event poller 4] MediaSource.cpp:505 emitEvent | 媒体注册:rtsp://__defaultVhost__/live/camera[0m
+RKNN infer ok: outputs=9 total_bytes=4872000 det_count=0
+RKNN infer ok: outputs=9 total_bytes=4872000 det_count=0
+RKNN infer ok: outputs=9 total_bytes=4872000 det_count=0
+[36m2026-03-23 09:51:43.433 I [mpp_encoder_demo] [3934-mpp_encoder_dem] MediaSource.cpp:505 emitEvent | 媒体注销:rtsp://__defaultVhost__/live/camera[0m
+[36m2026-03-23 09:51:43.433 I [mpp_encoder_demo] [3934-mpp_encoder_dem] TcpServer.cpp:68 ~TcpServer | Close tcp server [::]: 8554[0m
+mpp_encoder_demo done: input_frames=98 output_packets=98 encode_frames=98 run_seconds=6
+[36m2026-03-23 09:51:43.450 I [mpp_encoder_demo] [3934-mpp_encoder_dem] EventPoller.cpp:120 ~EventPoller | event poller 0[0m
+[36m2026-03-23 09:51:43.450 I [mpp_encoder_demo] [3934-mpp_encoder_dem] EventPoller.cpp:120 ~EventPoller | event poller 1[0m
+[36m2026-03-23 09:51:43.450 I [mpp_encoder_demo] [3934-mpp_encoder_dem] EventPoller.cpp:120 ~EventPoller | event poller 2[0m
+[36m2026-03-23 09:51:43.451 I [mpp_encoder_demo] [3934-mpp_encoder_dem] EventPoller.cpp:120 ~EventPoller | event poller 3[0m
+[36m2026-03-23 09:51:43.451 I [mpp_encoder_demo] [3934-mpp_encoder_dem] EventPoller.cpp:120 ~EventPoller | event poller 4[0m
+[36m2026-03-23 09:51:43.452 I [mpp_encoder_demo] [3934-mpp_encoder_dem] EventPoller.cpp:120 ~EventPoller | event poller 5[0m
+[36m2026-03-23 09:51:43.452 I [mpp_encoder_demo] [3934-mpp_encoder_dem] EventPoller.cpp:120 ~EventPoller | event poller 6[0m
+[36m2026-03-23 09:51:43.452 I [mpp_encoder_demo] [3934-mpp_encoder_dem] EventPoller.cpp:120 ~EventPoller | event poller 7[0m
+mpp[3934]: mpp_buffer: mpp_buffer_service_deinit cleaning misc group
+[36m2026-03-23 09:51:43.454 I [mpp_encoder_demo] [3934-mpp_encoder_dem] logger.cpp:91 ~Logger | [0m
