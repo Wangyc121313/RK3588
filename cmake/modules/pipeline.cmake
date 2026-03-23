@@ -1,5 +1,6 @@
 add_library(rk_pipeline STATIC
 	src/pipeline/perception_pipeline.cpp
+	src/pipeline/runtime_telemetry.cpp
 	src/pipeline/streaming_pipeline.cpp
 	src/pipeline/pipeline_factory.cpp
 )

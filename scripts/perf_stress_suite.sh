@@ -36,7 +36,7 @@ DEFAULT_CMD=(
     rtsp://0.0.0.0:8554/live/camera
     25 '' 5
     /dev/ttyUSB0 115200
-    191.7 60 2.5 0.15 6.0 120
+    11.7 60 2.5 0.15 6.0 120
 )
 
 if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then

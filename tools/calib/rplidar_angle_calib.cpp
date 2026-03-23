@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "pipeline/calibration_profile.hpp"
+
 #include "sl_lidar.h"
 #include "sl_lidar_driver.h"
 
@@ -37,6 +39,10 @@ float wrapDeg360(float deg) {
         out += 360.0f;
     }
     return out;
+}
+
+float fusionOffsetDeg(float calib_deg) {
+    return wrapDeg360(calib_deg - 180.0f);
 }
 
 float angleDeg(const sl_lidar_response_measurement_node_hq_t& node) {
@@ -112,7 +118,7 @@ float circularStdDevDeg(const std::vector<AngleSample>& samples) {
 
 void printUsage(const char* program) {
     std::cout << "Usage: " << program
-              << " [port] [baud] [target_m] [tolerance_m] [duration_s] [min_quality]\\n"
+              << " [port] [baud] [target_m] [tolerance_m] [duration_s] [min_quality] [output_profile]\\n"
               << "Defaults: /dev/ttyUSB0 115200 0.2 0.03 8 8\\n";
 }
 
@@ -125,8 +131,9 @@ int main(int argc, char* argv[]) {
     const float tol_m = argc > 4 ? std::max(0.005f, static_cast<float>(std::atof(argv[4]))) : 0.03f;
     const int duration_s = argc > 5 ? std::max(2, std::atoi(argv[5])) : 8;
     const int min_quality = argc > 6 ? std::max(0, std::atoi(argv[6])) : 8;
+    const std::string output_profile = argc > 7 ? argv[7] : "";
 
-    if (argc > 7) {
+    if (argc > 8) {
         printUsage(argv[0]);
         return 1;
     }
@@ -298,6 +305,19 @@ int main(int argc, char* argv[]) {
         std::cout << "status=OK\n";
     }
 
-    std::cout << "\nSuggested usage in fusion config: lidar_front_calib_deg=" << calib_deg << '\n';
+    std::cout << "raw_front_angle_deg=" << calib_deg << '\n';
+    std::cout << "fusion_offset_deg=" << fusionOffsetDeg(calib_deg) << '\n';
+    std::cout << "\nSuggested usage in fusion config: lidar_offset_deg=" << fusionOffsetDeg(calib_deg) << '\n';
+    if (!output_profile.empty()) {
+        rk3588::modules::CalibrationProfile profile;
+        profile.raw_front_angle_deg = calib_deg;
+        profile.lidar_offset_deg = fusionOffsetDeg(calib_deg);
+        if (rk3588::modules::saveCalibrationProfile(output_profile, profile)) {
+            std::cout << "saved_profile=" << output_profile << '\n';
+        } else {
+            std::cerr << "failed to save calibration profile: " << output_profile << '\n';
+            return 3;
+        }
+    }
     return 0;
 }

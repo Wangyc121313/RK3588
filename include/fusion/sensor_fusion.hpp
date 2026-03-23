@@ -59,6 +59,22 @@ public:
 		return cameraAngleToLidar(pixelToCameraAngle(x_pixel));
 	}
 
+	float lidarAngleToCamera(float lidar_angle_deg) const {
+		float relative = wrap360(lidar_angle_deg - cfg_.lidar_angle_offset_deg);
+		if (relative > 180.0F) {
+			relative -= 360.0F;
+		}
+		return relative;
+	}
+
+	float cameraFovDeg() const {
+		return cfg_.camera_fov_deg;
+	}
+
+	int imageWidth() const {
+		return cfg_.image_width;
+	}
+
 	LidarFovRange cameraFovToLidarRange() const {
 		const float cam_left = -cfg_.camera_fov_deg * 0.5F;
 		const float cam_right = cfg_.camera_fov_deg * 0.5F;

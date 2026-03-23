@@ -1,6 +1,7 @@
 #include "video/webrtc_publisher.hpp"
 
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <string>
 
@@ -125,6 +126,212 @@ struct WebRtcPublisherImpl {
     bool started = false;
 };
 
+constexpr const char kWebRtcApiPath[] = "/index/api/webrtc";
+constexpr const char kMediaListApiPath[] = "/index/api/getMediaList";
+const char* kJsonResponseHeader[] = {
+    "Content-Type",
+    "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin",
+    "*",
+    nullptr,
+};
+
+bool g_webrtc_http_ready = false;
+std::string g_current_app = "live";
+std::string g_current_stream = "camera";
+
+std::string escapeJson(const char* input) {
+    if (input == nullptr) {
+        return "";
+    }
+
+    std::string escaped;
+    escaped.reserve(std::strlen(input) + 32);
+    for (const unsigned char ch : std::string(input)) {
+        switch (ch) {
+            case '"':
+                escaped += "\\\"";
+                break;
+            case '\\':
+                escaped += "\\\\";
+                break;
+            case '\b':
+                escaped += "\\b";
+                break;
+            case '\f':
+                escaped += "\\f";
+                break;
+            case '\n':
+                escaped += "\\n";
+                break;
+            case '\r':
+                escaped += "\\r";
+                break;
+            case '\t':
+                escaped += "\\t";
+                break;
+            default:
+                if (ch < 0x20) {
+                    escaped.push_back('?');
+                } else {
+                    escaped.push_back(static_cast<char>(ch));
+                }
+                break;
+        }
+    }
+    return escaped;
+}
+
+void sendJsonResponse(const mk_http_response_invoker invoker, const std::string& body) {
+    if (invoker == nullptr) {
+        return;
+    }
+    mk_http_response_invoker_do_string(invoker, 200, kJsonResponseHeader, body.c_str());
+}
+
+void sendJsonError(const mk_http_response_invoker invoker, const char* err_msg) {
+    std::string body = "{\"code\":-1,\"msg\":\"";
+    body += escapeJson(err_msg != nullptr ? err_msg : "request failed");
+    body += "\"}";
+    sendJsonResponse(invoker, body);
+}
+
+void API_CALL onWebRtcAnswerSdp(void* user_data, const char* answer, const char* err) {
+    mk_http_response_invoker invoker = static_cast<mk_http_response_invoker>(user_data);
+    if (invoker == nullptr) {
+        return;
+    }
+
+    if (answer != nullptr) {
+        std::string body = "{\"code\":0,\"msg\":\"success\",\"type\":\"answer\",\"sdp\":\"";
+        body += escapeJson(answer);
+        body += "\"}";
+        sendJsonResponse(invoker, body);
+    } else {
+        sendJsonError(invoker, err != nullptr ? err : "failed to generate webrtc answer");
+    }
+
+    mk_http_response_invoker_clone_release(invoker);
+}
+
+void handleMediaListRequest(const mk_parser parser, const mk_http_response_invoker invoker) {
+    const char* schema = mk_parser_get_url_param(parser, "schema");
+    const bool wants_rtsp = schema == nullptr || schema[0] == '\0' || std::strcmp(schema, "rtsp") == 0;
+    const bool wants_webrtc = schema != nullptr &&
+                              (std::strcmp(schema, "rtc") == 0 || std::strcmp(schema, "webrtc") == 0);
+
+    std::string body = "{\"code\":0,\"msg\":\"success\",\"data\":[";
+    if (g_webrtc_http_ready && (wants_rtsp || wants_webrtc)) {
+        if (wants_rtsp) {
+            body += "{\"schema\":\"rtsp\",\"vhost\":\"__defaultVhost__\",\"app\":\"";
+            body += escapeJson(g_current_app.c_str());
+            body += "\",\"stream\":\"";
+            body += escapeJson(g_current_stream.c_str());
+            body += "\"}";
+        }
+        if (wants_rtsp && wants_webrtc) {
+            body += ",";
+        }
+        if (wants_webrtc) {
+            body += "{\"schema\":\"rtc\",\"vhost\":\"__defaultVhost__\",\"app\":\"";
+            body += escapeJson(g_current_app.c_str());
+            body += "\",\"stream\":\"";
+            body += escapeJson(g_current_stream.c_str());
+            body += "\"}";
+        }
+    }
+    body += "]}";
+    sendJsonResponse(invoker, body);
+}
+
+void API_CALL onMkHttpRequest(const mk_parser parser,
+                              const mk_http_response_invoker invoker,
+                              int* consumed,
+                              const mk_sock_info /*sender*/) {
+    if (consumed == nullptr) {
+        return;
+    }
+    *consumed = 0;
+    if (parser == nullptr || invoker == nullptr) {
+        return;
+    }
+
+    const char* url = mk_parser_get_url(parser);
+    if (url == nullptr) {
+        return;
+    }
+
+    if (std::strcmp(url, kMediaListApiPath) == 0) {
+        *consumed = 1;
+        handleMediaListRequest(parser, invoker);
+        return;
+    }
+
+    if (std::strcmp(url, kWebRtcApiPath) != 0) {
+        return;
+    }
+    *consumed = 1;
+
+    if (!g_webrtc_http_ready) {
+        sendJsonError(invoker, "webrtc http api not ready");
+        return;
+    }
+
+    mk_http_response_invoker invoker_clone = mk_http_response_invoker_clone(invoker);
+    if (invoker_clone == nullptr) {
+        sendJsonError(invoker, "failed to clone http invoker");
+        return;
+    }
+
+    const char* type = mk_parser_get_url_param(parser, "type");
+    if (type == nullptr || std::strcmp(type, "play") != 0) {
+        sendJsonError(invoker_clone, "only type=play is supported");
+        mk_http_response_invoker_clone_release(invoker_clone);
+        return;
+    }
+
+    const char* app = mk_parser_get_url_param(parser, "app");
+    if (app == nullptr || app[0] == '\0') {
+        sendJsonError(invoker_clone, "missing app query parameter");
+        mk_http_response_invoker_clone_release(invoker_clone);
+        return;
+    }
+
+    const char* stream = mk_parser_get_url_param(parser, "stream");
+    if (stream == nullptr || stream[0] == '\0') {
+        sendJsonError(invoker_clone, "missing stream query parameter");
+        mk_http_response_invoker_clone_release(invoker_clone);
+        return;
+    }
+
+    const char* offer = mk_parser_get_content(parser, nullptr);
+    if (offer == nullptr || offer[0] == '\0') {
+        sendJsonError(invoker_clone, "missing webrtc offer in http body");
+        mk_http_response_invoker_clone_release(invoker_clone);
+        return;
+    }
+
+    const char* host = mk_parser_get_header(parser, "Host");
+    if (host == nullptr || host[0] == '\0') {
+        host = "127.0.0.1";
+    }
+
+    std::string rtc_url = "rtc://";
+    rtc_url += host;
+    rtc_url += "/";
+    rtc_url += app;
+    rtc_url += "/";
+    rtc_url += stream;
+
+    const char* params = mk_parser_get_url_params(parser);
+    if (params != nullptr && params[0] != '\0') {
+        rtc_url += "?";
+        rtc_url += params;
+    }
+
+    mk_webrtc_get_answer_sdp(invoker_clone, onWebRtcAnswerSdp, type, offer, rtc_url.c_str());
+}
+
 static void API_CALL onH264Frame(void* user_data, mk_h264_splitter /*splitter*/, const char* frame, int size) {
     if (user_data == nullptr || frame == nullptr || size <= 0) {
         return;
@@ -208,16 +415,20 @@ bool WebRtcPublisher::start() {
     config.ssl_pwd = nullptr;
     mk_env_init(&config);
 
+    mk_ini global_ini = mk_ini_default();
+    if (global_ini != nullptr) {
+        mk_ini_set_option_int(global_ini, "rtc.port", z.rtc_port);
+        mk_ini_set_option_int(global_ini, "rtc.tcpPort", z.rtc_port);
+    }
+
     if (mk_rtc_server_start(z.rtc_port) == 0) {
         std::cerr << "webrtc rtc server start failed, port=" << z.rtc_port << '\n';
         stop();
         return false;
     }
-    if (mk_ice_server_start(z.ice_port) == 0) {
-        std::cerr << "webrtc ice server start failed, port=" << z.ice_port << '\n';
-        stop();
-        return false;
-    }
+    // ZLMediaKit's mk_ice_server_start currently returns 0 even on success.
+    // Do not treat that value as a startup failure here.
+    (void)mk_ice_server_start(z.ice_port);
     if (mk_signaling_server_start(z.signaling_port, 0) == 0) {
         std::cerr << "webrtc signaling server start failed, port=" << z.signaling_port << '\n';
         stop();
@@ -229,12 +440,18 @@ bool WebRtcPublisher::start() {
         return false;
     }
 
+    mk_events events = {};
+    events.on_mk_http_request = onMkHttpRequest;
+    mk_events_listen(&events);
+
     mk_ini media_option = mk_ini_create();
     if (media_option == nullptr) {
         stop();
         return false;
     }
-    mk_ini_set_option_int(media_option, "enable_rtsp", 0);
+    // ZLMediaKit's WebRTC play path resolves streams through the RTSP media source.
+    // Keep the RTSP schema registered internally even when WebRTC is the primary output.
+    mk_ini_set_option_int(media_option, "enable_rtsp", 1);
     mk_ini_set_option_int(media_option, "enable_rtmp", 0);
     mk_ini_set_option_int(media_option, "enable_hls", 0);
     mk_ini_set_option_int(media_option, "enable_hls_fmp4", 0);
@@ -274,6 +491,9 @@ bool WebRtcPublisher::start() {
         return false;
     }
 
+    g_current_app = z.parsed.app;
+    g_current_stream = z.parsed.stream;
+    g_webrtc_http_ready = true;
     z.started = true;
     return true;
 #endif
@@ -314,6 +534,8 @@ void WebRtcPublisher::stop() {
         mk_media_release(impl_->zlm.media);
         impl_->zlm.media = nullptr;
     }
+    g_webrtc_http_ready = false;
+    mk_events_listen(nullptr);
     mk_stop_all_server();
 
     delete impl_;

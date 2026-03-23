@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RK3588 Fusion Control Room</title>
+  <style>
+    :root {
+      --bg: #f3efe6;
+      --panel: rgba(255, 252, 246, 0.92);
+      --ink: #182028;
+      --muted: #5f6b73;
+      --line: rgba(24, 32, 40, 0.12);
+      --accent: #0f7b6c;
+      --accent-soft: rgba(15, 123, 108, 0.12);
+      --warn: #b4512d;
+      --shadow: 0 24px 80px rgba(35, 40, 44, 0.10);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15, 123, 108, 0.18), transparent 32%),
+        radial-gradient(circle at right 20%, rgba(180, 81, 45, 0.16), transparent 24%),
+        linear-gradient(180deg, #f8f4ea 0%, #ece4d6 100%);
+    }
+
+    .shell {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .title-card, .status-strip, .video-card, .sidebar-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+
+    .title-card {
+      padding: 24px;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: clamp(28px, 5vw, 52px);
+      line-height: 0.95;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      max-width: 52ch;
+      line-height: 1.5;
+    }
+
+    .status-strip {
+      padding: 18px;
+      display: grid;
+      gap: 12px;
+      align-content: center;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      width: fit-content;
+    }
+
+    .status-pill::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 0 4px rgba(15, 123, 108, 0.18);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.65fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .visual-column {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .video-card {
+      overflow: hidden;
+    }
+
+    .sidebar-card {
+      position: sticky;
+      top: 24px;
+      overflow: hidden;
+    }
+
+    .sidebar-grid {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      max-height: min(78vh, 920px);
+      overflow: hidden;
+    }
+
+    .video-header, .sidebar-header {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .video-wrap {
+      padding: 16px;
+    }
+
+    video {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #11151a 0%, #2a3238 100%);
+      object-fit: contain;
+    }
+
+    .log-card,
+    .targets-card {
+      display: grid;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    .scroll-panel {
+      min-height: 0;
+      max-height: 220px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .scroll-panel::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .scroll-panel::-webkit-scrollbar-thumb {
+      background: rgba(24, 32, 40, 0.18);
+      border-radius: 999px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid var(--line);
+    }
+
+    .metric-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 22px;
+      line-height: 1.1;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    input, button, textarea {
+      font: inherit;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 11px 12px;
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--ink);
+    }
+
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      border-radius: 14px;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .secondary {
+      background: rgba(24, 32, 40, 0.08);
+      color: var(--ink);
+    }
+
+    .mono {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--muted);
+      word-break: break-all;
+    }
+
+    .target-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .target-item {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      border-radius: 16px;
+      padding: 12px;
+    }
+
+    .target-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .empty {
+      color: var(--muted);
+      padding: 14px;
+      border: 1px dashed var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .warn { color: var(--warn); }
+
+    .lidar-card {
+      overflow: hidden;
+    }
+
+    .lidar-wrap {
+      padding: 16px;
+    }
+
+    .lidar-canvas {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(15, 123, 108, 0.08), rgba(24, 32, 40, 0.04));
+      border: 1px solid var(--line);
+      display: block;
+    }
+
+    @media (max-width: 1024px) {
+      .hero, .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="title-card">
+        <div class="eyebrow">RK3588 Fusion Browser Preview</div>
+        <h1>WebRTC Preview<br>With Side Telemetry</h1>
+        <p class="subtitle">视频区域只保留目标框和标签，运行状态、吞吐和目标摘要放到右侧面板，便于后续继续加 BEV 和局部占据图。</p>
+      </div>
+      <div class="status-strip">
+        <div id="connPill" class="status-pill">Idle</div>
+        <div class="mono" id="streamSummary">等待读取默认流配置...</div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <section class="visual-column">
+        <section class="video-card">
+          <div class="video-header">
+            <strong>Live Video</strong>
+            <span class="mono" id="rtcUrlText">rtc://-</span>
+          </div>
+          <div class="video-wrap">
+            <video id="video" autoplay playsinline controls muted></video>
+          </div>
+        </section>
+
+        <section class="lidar-card title-card">
+          <div class="video-header">
+            <strong>LiDAR Top View</strong>
+            <span id="lidarSummary" class="mono">等待 LiDAR 点云...</span>
+          </div>
+          <div class="lidar-wrap">
+            <canvas id="lidarCanvas" class="lidar-canvas" width="640" height="360"></canvas>
+          </div>
+        </section>
+      </section>
+
+      <aside class="sidebar-card">
+        <div class="sidebar-header">
+          <strong>Runtime Panel</strong>
+          <span class="mono" id="lastTelemetryAt">telemetry: waiting</span>
+        </div>
+        <div class="sidebar-grid">
+          <div class="controls">
+            <label>App
+              <input id="appInput" value="live">
+            </label>
+            <label>Stream
+              <input id="streamInput" value="camera">
+            </label>
+          </div>
+
+          <div class="button-row">
+            <button id="connectBtn" class="primary">Connect</button>
+            <button id="disconnectBtn" class="secondary">Disconnect</button>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric">
+              <div class="metric-label">Encode FPS</div>
+              <div id="fpsValue" class="metric-value">--</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Frame ID</div>
+              <div id="frameValue" class="metric-value">--</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Packets</div>
+              <div id="packetValue" class="metric-value">--</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Detections</div>
+              <div id="detValue" class="metric-value">--</div>
+            </div>
+          </div>
+
+          <div class="log-card">
+            <div class="metric-label">Connection Log</div>
+            <div class="scroll-panel">
+              <div id="logBox" class="empty">尚未连接。</div>
+            </div>
+          </div>
+
+          <div class="targets-card">
+            <div class="metric-label">Targets</div>
+            <div class="scroll-panel">
+              <div id="targets" class="target-list">
+                <div class="empty">暂无 telemetry 目标数据。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      peer: null,
+      telemetryTimer: null,
+      config: null,
+      lastSnapshot: null,
+    };
+
+    const refs = {
+      video: document.getElementById('video'),
+      connPill: document.getElementById('connPill'),
+      streamSummary: document.getElementById('streamSummary'),
+      rtcUrlText: document.getElementById('rtcUrlText'),
+      lastTelemetryAt: document.getElementById('lastTelemetryAt'),
+      appInput: document.getElementById('appInput'),
+      streamInput: document.getElementById('streamInput'),
+      fpsValue: document.getElementById('fpsValue'),
+      frameValue: document.getElementById('frameValue'),
+      packetValue: document.getElementById('packetValue'),
+      detValue: document.getElementById('detValue'),
+      logBox: document.getElementById('logBox'),
+      targets: document.getElementById('targets'),
+      lidarCanvas: document.getElementById('lidarCanvas'),
+      lidarSummary: document.getElementById('lidarSummary'),
+      connectBtn: document.getElementById('connectBtn'),
+      disconnectBtn: document.getElementById('disconnectBtn'),
+    };
+
+    function setStatus(text, warn = false) {
+      refs.connPill.textContent = text;
+      refs.connPill.classList.toggle('warn', warn);
+    }
+
+    function setLog(text, warn = false) {
+      refs.logBox.textContent = text;
+      refs.logBox.classList.toggle('warn', warn);
+    }
+
+    function formatRuntime(seconds) {
+      if (typeof seconds !== 'number') {
+        return '--';
+      }
+      return `${seconds.toFixed(1)} s`;
+    }
+
+    function currentParams() {
+      return {
+        app: refs.appInput.value.trim() || 'live',
+        stream: refs.streamInput.value.trim() || 'camera',
+      };
+    }
+
+    async function loadConfig() {
+      const response = await fetch('/api/config');
+      const config = await response.json();
+      state.config = config;
+
+      const query = new URLSearchParams(window.location.search);
+      refs.appInput.value = query.get('app') || config.default_app || 'live';
+      refs.streamInput.value = query.get('stream') || config.default_stream || 'camera';
+
+      const params = currentParams();
+      refs.rtcUrlText.textContent = config.default_play_url.replace(/\/[^/]+\/[^/]+$/, `/${params.app}/${params.stream}`);
+      refs.streamSummary.textContent = `ZLM HTTP ${config.zlm_host}:${config.zlm_http_port} | telemetry ${config.telemetry_enabled ? 'enabled' : 'disabled'}`;
+    }
+
+    function updateQueryString() {
+      const params = currentParams();
+      const url = new URL(window.location.href);
+      url.searchParams.set('app', params.app);
+      url.searchParams.set('stream', params.stream);
+      history.replaceState(null, '', url.toString());
+      refs.rtcUrlText.textContent = state.config.default_play_url.replace(/\/[^/]+\/[^/]+$/, `/${params.app}/${params.stream}`);
+    }
+
+    async function connect() {
+      updateQueryString();
+      disconnect(false);
+
+      const params = currentParams();
+      const peer = new RTCPeerConnection();
+      peer.addTransceiver('video', { direction: 'recvonly' });
+      peer.ontrack = (event) => {
+        refs.video.srcObject = event.streams[0];
+      };
+      peer.onconnectionstatechange = () => {
+        setStatus(peer.connectionState || 'connecting', peer.connectionState === 'failed');
+      };
+      state.peer = peer;
+
+      try {
+        setStatus('connecting');
+        setLog('创建 offer 并向本地 debug UI 代理请求 answer。');
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+
+        const response = await fetch(`/api/webrtc?app=${encodeURIComponent(params.app)}&stream=${encodeURIComponent(params.stream)}&type=play`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: offer.sdp,
+        });
+        const answer = await response.json();
+        if (!response.ok || answer.code !== 0 || !answer.sdp) {
+          throw new Error(answer.msg || `webrtc api failed: ${response.status}`);
+        }
+
+        await peer.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
+        setStatus('connected');
+        setLog('WebRTC answer 已设置，等待浏览器收到视频轨。');
+      } catch (error) {
+        console.error(error);
+        setStatus('error', true);
+        setLog(`连接失败: ${error.message}`, true);
+        disconnect(false);
+      }
+    }
+
+    function disconnect(log = true) {
+      if (state.peer) {
+        state.peer.ontrack = null;
+        state.peer.onconnectionstatechange = null;
+        state.peer.close();
+        state.peer = null;
+      }
+      refs.video.srcObject = null;
+      if (log) {
+        setStatus('idle');
+        setLog('连接已关闭。');
+      }
+    }
+
+    function renderTargets(snapshot) {
+      const targets = snapshot?.targets || [];
+      if (!targets.length) {
+        refs.targets.innerHTML = '<div class="empty">当前 snapshot 没有检测目标。</div>';
+        return;
+      }
+      refs.targets.innerHTML = targets.map((target) => {
+        const distance = target.distance_m >= 0 ? `${target.distance_m.toFixed(2)} m` : 'n/a';
+        const angle = typeof target.angle_deg === 'number'
+          ? `${target.angle_deg >= 0 ? '+' : ''}${target.angle_deg.toFixed(1)}°`
+          : 'n/a';
+        const trackId = target.track_id > 0 ? `#${target.track_id}` : 'new';
+        const closing = typeof target.closing_speed_mps === 'number'
+          ? `${target.closing_speed_mps.toFixed(2)} m/s`
+          : 'n/a';
+        const ttc = typeof target.ttc_s === 'number' && target.ttc_s > 0
+          ? `${target.ttc_s.toFixed(1)} s`
+          : 'n/a';
+        return `
+          <article class="target-item">
+            <div class="target-head">
+              <span>${target.class_name || 'object'} ${trackId}</span>
+              <span>${(target.confidence * 100).toFixed(1)}%</span>
+            </div>
+            <div class="mono">distance ${distance}</div>
+            <div class="mono">angle ${angle}</div>
+            <div class="mono">closing ${closing} | TTC ${ttc}</div>
+            <div class="mono">bbox [${target.left}, ${target.top}] → [${target.right}, ${target.bottom}]</div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    function renderLidar(snapshot) {
+      const canvas = refs.lidarCanvas;
+      const context = canvas.getContext('2d');
+      const points = snapshot?.lidar_points || [];
+      const overlapHalfAngleDeg = Math.max(1, Number(snapshot?.camera_overlap_half_angle_deg ?? 30));
+      const centerAngleDeg = Number(snapshot?.center_angle_deg ?? 0);
+
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = '#f7f2e9';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      const originX = canvas.width / 2;
+      const originY = canvas.height / 2;
+      const outerRadius = Math.min(canvas.width, canvas.height) * 0.42;
+
+      const angleToCanvas = (angleDeg, radius) => {
+        const radians = (angleDeg - 90) * Math.PI / 180;
+        return {
+          x: originX + Math.cos(radians) * radius,
+          y: originY + Math.sin(radians) * radius,
+        };
+      };
+
+      const overlapStart = centerAngleDeg - overlapHalfAngleDeg;
+      const overlapEnd = centerAngleDeg + overlapHalfAngleDeg;
+
+      context.fillStyle = 'rgba(15, 123, 108, 0.08)';
+      context.beginPath();
+      context.moveTo(originX, originY);
+      context.arc(originX, originY,
+        outerRadius,
+        (overlapStart - 90) * Math.PI / 180,
+        (overlapEnd - 90) * Math.PI / 180);
+      context.closePath();
+      context.fill();
+
+      context.strokeStyle = 'rgba(24, 32, 40, 0.12)';
+      context.lineWidth = 1;
+      for (let i = 1; i <= 4; i += 1) {
+        context.beginPath();
+        context.arc(originX, originY, (outerRadius * i) / 4, 0, Math.PI * 2);
+        context.stroke();
+      }
+
+      context.beginPath();
+      context.moveTo(originX, originY - outerRadius);
+      context.lineTo(originX, originY + outerRadius);
+      context.stroke();
+      context.beginPath();
+      context.moveTo(originX - outerRadius, originY);
+      context.lineTo(originX + outerRadius, originY);
+      context.stroke();
+
+      context.fillStyle = '#5f6b73';
+      context.font = '12px IBM Plex Mono';
+      context.fillText('front', originX - 18, originY - outerRadius - 8);
+      context.fillText('rear', originX - 14, originY + outerRadius + 16);
+      context.fillText('left', originX - outerRadius - 26, originY + 4);
+      context.fillText('right', originX + outerRadius - 4, originY + 4);
+      context.fillText('0°', originX - 9, originY - outerRadius - 24);
+      context.fillText('+90°', originX + outerRadius + 10, originY + 4);
+      context.fillText('-90°', originX - outerRadius - 52, originY + 4);
+      context.fillText('180°', originX - 14, originY + outerRadius + 32);
+
+      const centerBoundary = angleToCanvas(centerAngleDeg, outerRadius);
+      const leftBoundary = angleToCanvas(centerAngleDeg - overlapHalfAngleDeg, outerRadius);
+      const rightBoundary = angleToCanvas(centerAngleDeg + overlapHalfAngleDeg, outerRadius);
+      context.strokeStyle = 'rgba(15, 123, 108, 0.45)';
+      context.lineWidth = 1.5;
+      context.setLineDash([6, 5]);
+      context.beginPath();
+      context.moveTo(originX, originY);
+      context.lineTo(leftBoundary.x, leftBoundary.y);
+      context.stroke();
+      context.beginPath();
+      context.moveTo(originX, originY);
+      context.lineTo(rightBoundary.x, rightBoundary.y);
+      context.stroke();
+      context.setLineDash([]);
+      context.strokeStyle = '#c23b22';
+      context.lineWidth = 2.2;
+      context.beginPath();
+      context.moveTo(originX, originY);
+      context.lineTo(centerBoundary.x, centerBoundary.y);
+      context.stroke();
+      context.fillStyle = '#0f7b6c';
+      context.font = '11px IBM Plex Mono';
+      const formatAngle = (angleDeg) => `${angleDeg >= 0 ? '+' : ''}${angleDeg.toFixed(1)}°`;
+      context.fillText(`camera overlap ${formatAngle(overlapStart)}..${formatAngle(overlapEnd)}`, originX - 112, originY - outerRadius + 18);
+      context.fillStyle = '#c23b22';
+      context.fillText(`center ${formatAngle(centerAngleDeg)}`, originX - 42, originY - outerRadius + 34);
+
+      context.fillStyle = '#b4512d';
+      context.beginPath();
+      context.arc(originX, originY, 5, 0, Math.PI * 2);
+      context.fill();
+
+      if (!points.length) {
+        refs.lidarSummary.textContent = snapshot?.lidar_matched
+          ? '当前匹配帧没有可绘制的 360° 点。'
+          : '当前帧没有匹配到 LiDAR 点云。';
+        context.fillStyle = '#5f6b73';
+        context.font = '13px IBM Plex Mono';
+        context.fillText('No LiDAR points', 104, 164);
+        return;
+      }
+
+      let maxRange = 4.0;
+      for (const point of points) {
+        maxRange = Math.max(maxRange, Math.abs(point.z_m), Math.abs(point.x_m), point.distance_m);
+      }
+      maxRange = Math.min(8.0, Math.max(2.0, maxRange * 1.1));
+      const scale = outerRadius / maxRange;
+
+      context.fillStyle = '#0f7b6c';
+      for (const point of points) {
+        const px = originX + point.x_m * scale;
+        const py = originY - point.z_m * scale;
+        context.beginPath();
+        context.arc(px, py, 2.8, 0, Math.PI * 2);
+        context.fill();
+      }
+
+      refs.lidarSummary.textContent = `points ${points.length} | lidar_dt ${snapshot?.lidar_delta_ms ?? '--'} ms | period ${snapshot?.lidar_scan_period_ms ?? '--'} ms | max_age ${snapshot?.lidar_allowed_age_ms ?? '--'} ms | 360 range ${maxRange.toFixed(1)} m | center ${formatAngle(centerAngleDeg)} | overlap ±${overlapHalfAngleDeg.toFixed(1)}°`;
+    }
+
+    async function refreshTelemetry() {
+      try {
+        const response = await fetch('/api/telemetry/latest');
+        const payload = await response.json();
+        if (!payload.ok || !payload.snapshot) {
+          refs.lastTelemetryAt.textContent = 'telemetry: waiting';
+          return;
+        }
+
+        const snapshot = payload.snapshot;
+        state.lastSnapshot = snapshot;
+        refs.lastTelemetryAt.textContent = `telemetry: ${snapshot.ts_ms ?? snapshot.telemetry_ts_ms ?? '--'}`;
+        refs.fpsValue.textContent = typeof snapshot.encode_fps === 'number' ? snapshot.encode_fps.toFixed(1) : '--';
+        refs.frameValue.textContent = snapshot.frame_id ?? '--';
+        refs.packetValue.textContent = snapshot.output_packets ?? '--';
+        refs.detValue.textContent = Array.isArray(snapshot.targets) ? snapshot.targets.length : '--';
+        refs.streamSummary.textContent = `${snapshot.pipeline || snapshot.pipeline_name || 'pipeline'} | runtime ${formatRuntime(snapshot.runtime_sec)} | ${snapshot.primary_url || 'no-url'}`;
+        renderTargets(snapshot);
+        renderLidar(snapshot);
+      } catch (error) {
+        console.error(error);
+        refs.lastTelemetryAt.textContent = 'telemetry: error';
+      }
+    }
+
+    async function bootstrap() {
+      await loadConfig();
+      refs.connectBtn.addEventListener('click', connect);
+      refs.disconnectBtn.addEventListener('click', () => disconnect(true));
+      refs.appInput.addEventListener('change', updateQueryString);
+      refs.streamInput.addEventListener('change', updateQueryString);
+      state.telemetryTimer = window.setInterval(refreshTelemetry, 1000);
+      refreshTelemetry();
+      connect();
+    }
+
+    bootstrap().catch((error) => {
+      console.error(error);
+      setStatus('bootstrap error', true);
+      setLog(`页面初始化失败: ${error.message}`, true);
+    });
+  </script>
+</body>
+</html>

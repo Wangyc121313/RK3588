@@ -1,8 +1,5 @@
 if(RK_DEPS_RGA_FOUND AND RK_DEPS_RKNN_FOUND)
     add_executable(stream_gateway_app apps/stream_gateway_main.cpp)
     target_link_libraries(stream_gateway_app PRIVATE rk_pipeline)
-    if(RK_DEPS_FFMPEG_FOUND)
-        target_compile_definitions(stream_gateway_app PRIVATE RK_HAS_FFMPEG=1)
-    endif()
     add_executable(camera_rga_rknn_rtsp_demo ALIAS stream_gateway_app)
 endif()
