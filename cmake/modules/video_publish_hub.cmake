@@ -1,0 +1,3 @@
+add_library(rk_video_publish_hub STATIC src/video/publisher_hub.cpp)
+target_include_directories(rk_video_publish_hub PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(rk_video_publish_hub PUBLIC rk_video_base rk_video_publish_rtsp rk_video_publish_webrtc)

@@ -1,0 +1,2 @@
+add_executable(pipeline_thread_demo demos/fusion/pipeline_thread_demo.cpp)
+target_link_libraries(pipeline_thread_demo PRIVATE rk_fusion rk_core)

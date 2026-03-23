@@ -1,0 +1,5 @@
+set(RKNN_API_LIB "/usr/lib/librknn_api.so")
+set(RK_DEPS_RKNN_FOUND OFF)
+if(EXISTS "${RKNN_API_LIB}")
+    set(RK_DEPS_RKNN_FOUND ON)
+endif()

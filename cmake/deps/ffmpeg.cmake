@@ -1,0 +1,5 @@
+find_program(FFMPEG_BIN ffmpeg)
+set(RK_DEPS_FFMPEG_FOUND OFF)
+if(FFMPEG_BIN)
+    set(RK_DEPS_FFMPEG_FOUND ON)
+endif()

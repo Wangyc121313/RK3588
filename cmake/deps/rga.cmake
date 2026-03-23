@@ -1,0 +1,16 @@
+set(LIBRGA_ROOT "${CMAKE_SOURCE_DIR}/third_party/librga")
+set(LIBRGA_INCLUDE_DIR "${LIBRGA_ROOT}/include")
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    set(LIBRGA_LIB_DIR "${LIBRGA_ROOT}/libs/Linux/gcc-aarch64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
+    set(LIBRGA_LIB_DIR "${LIBRGA_ROOT}/libs/Linux/gcc-armhf")
+else()
+    set(LIBRGA_LIB_DIR "")
+endif()
+
+set(LIBRGA_SHARED "${LIBRGA_LIB_DIR}/librga.so")
+set(RK_DEPS_RGA_FOUND OFF)
+if(EXISTS "${LIBRGA_INCLUDE_DIR}/im2d.h" AND EXISTS "${LIBRGA_SHARED}")
+    set(RK_DEPS_RGA_FOUND ON)
+endif()

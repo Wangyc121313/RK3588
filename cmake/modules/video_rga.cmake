@@ -1,0 +1,7 @@
+add_library(rk_video_rga STATIC src/video/rga_processor.cpp)
+target_include_directories(rk_video_rga PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(rk_video_rga PUBLIC rk_video_base)
+if(RK_DEPS_RGA_FOUND)
+    target_include_directories(rk_video_rga PUBLIC ${LIBRGA_INCLUDE_DIR})
+    target_link_libraries(rk_video_rga PUBLIC ${LIBRGA_SHARED})
+endif()

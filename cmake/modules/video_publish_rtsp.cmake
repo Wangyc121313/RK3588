@@ -1,0 +1,7 @@
+add_library(rk_video_publish_rtsp STATIC src/video/zlm_rtsp_publisher.cpp)
+target_include_directories(rk_video_publish_rtsp PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(rk_video_publish_rtsp PUBLIC rk_video_base)
+if(RK_DEPS_ZLM_FOUND)
+    target_include_directories(rk_video_publish_rtsp PUBLIC ${ZLM_API_INCLUDE_DIR})
+    target_link_libraries(rk_video_publish_rtsp PUBLIC ${ZLM_API_LIB})
+endif()

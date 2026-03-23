@@ -1,0 +1,9 @@
+add_executable(rga_demo demos/video/rga_demo.cpp)
+add_executable(rtsp_publish_demo demos/video/rtsp_publish_demo.cpp)
+add_executable(webrtc_publish_demo demos/video/webrtc_publish_demo.cpp)
+add_executable(mpp_encoder_demo_standalone demos/video/mpp_encoder_demo.cpp)
+
+target_link_libraries(rga_demo PRIVATE rk_video_rga)
+target_link_libraries(rtsp_publish_demo PRIVATE project_warnings)
+target_link_libraries(webrtc_publish_demo PRIVATE project_warnings)
+target_link_libraries(mpp_encoder_demo_standalone PRIVATE project_warnings)

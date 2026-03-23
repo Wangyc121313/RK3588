@@ -1,0 +1,6 @@
+add_library(rk_infer STATIC src/infer/rknn_runner.cpp)
+target_include_directories(rk_infer PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(rk_infer PUBLIC rk_core)
+if(RK_DEPS_RKNN_FOUND)
+    target_link_libraries(rk_infer PUBLIC ${RKNN_API_LIB})
+endif()

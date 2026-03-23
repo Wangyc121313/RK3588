@@ -1,0 +1,5 @@
+if(RK_DEPS_MPP_FOUND)
+    add_executable(perception_app apps/perception_main.cpp)
+    target_link_libraries(perception_app PRIVATE rk_pipeline)
+    add_executable(mpp_encoder_demo ALIAS perception_app)
+endif()

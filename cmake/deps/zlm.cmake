@@ -1,0 +1,8 @@
+set(ZLM_ROOT "${CMAKE_SOURCE_DIR}/third_party/ZLMediaKit")
+set(ZLM_API_INCLUDE_DIR "${ZLM_ROOT}/api/include")
+set(ZLM_RELEASE_DIR "${ZLM_ROOT}/release/linux/Release")
+set(ZLM_API_LIB "${ZLM_RELEASE_DIR}/libmk_api.so")
+set(RK_DEPS_ZLM_FOUND OFF)
+if(EXISTS "${ZLM_API_INCLUDE_DIR}/mk_mediakit.h" AND EXISTS "${ZLM_API_LIB}")
+    set(RK_DEPS_ZLM_FOUND ON)
+endif()

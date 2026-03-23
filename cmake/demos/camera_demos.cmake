@@ -1,0 +1,9 @@
+add_executable(camera_v4l2_demo demos/camera/camera_v4l2_demo.cpp)
+add_executable(camera_thread_demo demos/camera/camera_thread_demo.cpp)
+add_executable(camera_rga_demo demos/camera/camera_rga_demo.cpp)
+add_executable(camera_rga_rknn_demo demos/camera/camera_rga_rknn_demo.cpp)
+
+target_link_libraries(camera_v4l2_demo PRIVATE project_warnings)
+target_link_libraries(camera_thread_demo PRIVATE rk_camera)
+target_link_libraries(camera_rga_demo PRIVATE rk_camera rk_video_rga)
+target_link_libraries(camera_rga_rknn_demo PRIVATE rk_camera rk_video_rga rk_infer)

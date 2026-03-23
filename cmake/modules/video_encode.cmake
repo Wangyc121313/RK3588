@@ -1,0 +1,7 @@
+add_library(rk_video_encode STATIC src/video/mpp_encoder.cpp)
+target_include_directories(rk_video_encode PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(rk_video_encode PUBLIC rk_video_base)
+if(RK_DEPS_MPP_FOUND)
+    target_include_directories(rk_video_encode PUBLIC ${MPP_INCLUDE_DIR})
+    target_link_libraries(rk_video_encode PUBLIC ${MPP_LIB})
+endif()
