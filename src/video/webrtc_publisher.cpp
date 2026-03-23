@@ -45,6 +45,11 @@ std::uint16_t envPortOr(const char* name, std::uint16_t fallback) {
     return static_cast<std::uint16_t>(port);
 }
 
+bool hasEnv(const char* name) {
+    const char* env = std::getenv(name);
+    return env != nullptr && env[0] != '\0';
+}
+
 ParsedRtcUrl parseRtcUrl(const std::string& rtc_url) {
     ParsedRtcUrl out;
     if (rtc_url.empty()) {
@@ -183,7 +188,12 @@ bool WebRtcPublisher::start() {
     z.http_port = envPortOr("RK3588_WEBRTC_HTTP_PORT", 8080);
     z.signaling_port = envPortOr("RK3588_WEBRTC_SIGNALING_PORT", 10000);
     z.rtc_port = envPortOr("RK3588_WEBRTC_RTC_PORT", z.parsed.port);
-    z.ice_port = envPortOr("RK3588_WEBRTC_ICE_PORT", z.rtc_port);
+    z.ice_port = envPortOr("RK3588_WEBRTC_ICE_PORT", 8001);
+    if (!hasEnv("RK3588_WEBRTC_ICE_PORT") && z.ice_port == z.rtc_port) {
+        if (z.rtc_port < 65535) {
+            z.ice_port = static_cast<std::uint16_t>(z.rtc_port + 1);
+        }
+    }
 
     mk_config config = {};
     config.thread_num = 0;

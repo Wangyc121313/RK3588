@@ -28,7 +28,7 @@ ln -sfn "$(basename "$RUN_DIR")" "$OUT_DIR/latest"
 
 DEFAULT_CMD=(
     ./build/mpp_encoder_demo
-    /dev/video0 640 480
+    /dev/video1 640 480
     "$DURATION_S"
     models/yolov8n.rknn
     640 640
