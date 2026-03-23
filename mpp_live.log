@@ -1,6 +1,0 @@
-mpp[14074]: mpp_platform: client 12 driver is not ready!
-mpp[14074]: mpp_info: mpp version: unknown mpp version for missing VCS info
-mpp[14074]: mpp_enc: set prep cfg w:h [640:480] stride [640:480] fmt 10 rotate 0 mirror 0
-mpp[14074]: mpp_enc: set rc cbr bps [2097152:2500000:1500000] fps [25:1:fix] - [25:1:fix] gop 60
-mpp[14074]: mpp_enc: mode cbr bps [1500000:2097152:2500000] fps fix [25/1] -> fix [25/1] gop i [60] v [0]
-av_interleaved_write_frame(): Broken pipe
