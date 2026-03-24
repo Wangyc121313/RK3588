@@ -82,6 +82,7 @@ public:
             track.last_timestamp_ms = timestamp_ms;
             track.hits = 1;
             tracks_.push_back(track);
+            used_tracks.push_back(true);
             (*estimates)[obs_index] = makeEstimate(track);
         }
     }

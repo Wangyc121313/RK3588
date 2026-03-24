@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DEVICE="${1:-/dev/video0}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$ROOT_DIR/scripts/camera_device_utils.sh"
+
+DEVICE="${1:-auto}"
 FPS="${2:-}"
+
+DEVICE="$(resolve_camera_device "$DEVICE")"
 
 if [[ ! -e "$DEVICE" ]]; then
     echo "camera device not found: $DEVICE" >&2

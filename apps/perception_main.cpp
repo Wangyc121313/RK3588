@@ -28,6 +28,14 @@ std::uint32_t envUintOr(const char* name, std::uint32_t fallback) {
     return value > 0 ? static_cast<std::uint32_t>(value) : fallback;
 }
 
+float envFloatOr(const char* name, float fallback) {
+    const char* env = std::getenv(name);
+    if (env == nullptr || env[0] == '\0') {
+        return fallback;
+    }
+    return static_cast<float>(std::atof(env));
+}
+
 std::uint32_t forced422FourccFromEnv() {
     const char* env = std::getenv("RK3588_FORCE_422");
     if (env == nullptr || env[0] == '\0') {
@@ -79,6 +87,7 @@ int main(int argc, char* argv[]) {
         : config.lidar_max_age_ms;
     config.publish_mode = argc > 21 ? argv[21] : config.publish_mode;
     config.webrtc_url = argc > 22 ? argv[22] : config.webrtc_url;
+    config.camera_fov_deg = std::max(1.0F, envFloatOr("RK3588_CAMERA_FOV_DEG", config.camera_fov_deg));
     config.swap_uv = envEnabled("RK3588_YUV_SWAP_UV");
     config.forced_422_fourcc = forced422FourccFromEnv();
     config.debug_video_hud = envEnabled("RK3588_DEBUG_VIDEO_HUD");

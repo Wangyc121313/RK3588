@@ -108,6 +108,18 @@ void RuntimeTelemetrySink::writeSnapshot(const RuntimeTelemetrySnapshot& snapsho
          << "\"lidar_delta_ms\":" << snapshot.lidar_delta_ms << ','
          << "\"lidar_scan_period_ms\":" << snapshot.lidar_scan_period_ms << ','
          << "\"lidar_allowed_age_ms\":" << snapshot.lidar_allowed_age_ms << ','
+         << "\"capture_to_encode_ms\":" << snapshot.capture_to_encode_ms << ','
+         << "\"preprocess_ms\":" << snapshot.preprocess_ms << ','
+         << "\"infer_ms\":" << snapshot.infer_ms << ','
+         << "\"fusion_ms\":" << snapshot.fusion_ms << ','
+         << "\"track_ms\":" << snapshot.track_ms << ','
+         << "\"overlay_ms\":" << snapshot.overlay_ms << ','
+         << "\"encode_submit_ms\":" << snapshot.encode_submit_ms << ','
+         << "\"lidar_points_total\":" << snapshot.lidar_points_total << ','
+         << "\"target_count\":" << snapshot.target_count << ','
+         << "\"confirmed_target_count\":" << snapshot.confirmed_target_count << ','
+         << "\"valid_distance_target_count\":" << snapshot.valid_distance_target_count << ','
+         << "\"ttc_alert_count\":" << snapshot.ttc_alert_count << ','
          << "\"targets\":[";
 
     for (std::size_t i = 0; i < snapshot.targets.size(); ++i) {

@@ -449,8 +449,9 @@ int PerceptionPipeline::run() {
 		if (loadCalibrationProfile(config_.calibration_profile_path, &profile)) {
 			applyCalibrationProfile(profile, &config_);
 			std::cout << "loaded calibration profile: " << config_.calibration_profile_path
+					  << " camera_fov_deg=" << config_.camera_fov_deg
 					  << " offset_deg=" << config_.lidar_offset_deg
-					  << " fov_deg=" << config_.lidar_fov_deg
+					  << " overlap_fov_deg=" << config_.lidar_fov_deg
 					  << " window_half_deg=" << config_.lidar_window_half_deg
 					  << " max_age_ms=" << config_.lidar_max_age_ms << '\n';
 		} else {
@@ -470,7 +471,7 @@ int PerceptionPipeline::run() {
 
 	FusionConfig fusion_cfg;
 	fusion_cfg.image_width = static_cast<int>(config_.camera_width);
-	fusion_cfg.camera_fov_deg = config_.lidar_fov_deg;
+	fusion_cfg.camera_fov_deg = config_.camera_fov_deg;
 	fusion_cfg.lidar_angle_offset_deg = config_.lidar_offset_deg;
 	fusion_cfg.default_window_half_deg = config_.lidar_window_half_deg;
 	fusion_cfg.min_valid_distance_m = config_.lidar_min_dist_m;
@@ -515,8 +516,9 @@ int PerceptionPipeline::run() {
 		}
 
 		std::cout << "lidar fusion enabled: port=" << config_.lidar_port
+				  << " camera_fov_deg=" << config_.camera_fov_deg
 				  << " offset_deg=" << config_.lidar_offset_deg
-				  << " fov_deg=" << config_.lidar_fov_deg
+				  << " overlap_fov_deg=" << config_.lidar_fov_deg
 				  << " window_half_deg=" << config_.lidar_window_half_deg
 				  << " min_dist=" << config_.lidar_min_dist_m
 				  << " max_dist=" << config_.lidar_max_dist_m
@@ -722,26 +724,41 @@ int PerceptionPipeline::run() {
 			frame = std::move(latest);
 		}
 
+		double preprocess_ms = 0.0;
+		double infer_ms = 0.0;
+		double fusion_ms = 0.0;
+		double track_ms = 0.0;
+		double overlay_ms = 0.0;
+		double encode_submit_ms = 0.0;
+
 		const bool do_infer =
 			(encode_frames % static_cast<std::uint64_t>(config_.infer_every_n_frames) == 0) ||
 			last_detections.empty();
 		if (do_infer) {
+			const auto preprocess_begin = std::chrono::steady_clock::now();
 			const bool rga_ok = rga.processDmaFdToRgbResize(frame.dma_fd, frame.pixel_format, rgb.data());
+			preprocess_ms = std::chrono::duration<double, std::milli>(
+				std::chrono::steady_clock::now() - preprocess_begin).count();
 			if (!rga_ok) {
 				std::cerr << "rga process failed frame_id=" << frame.frame_id << '\n';
 				camera.requeueBuffer(frame.buffer_index);
 				continue;
 			}
 			std::vector<YoloDetection> detections;
+			const auto infer_begin = std::chrono::steady_clock::now();
 			if (!rknn.inferRgb(rgb.data(),
 							   rgb.size(),
 							   static_cast<int>(frame.width),
 							   static_cast<int>(frame.height),
 							   &detections)) {
+				infer_ms = std::chrono::duration<double, std::milli>(
+					std::chrono::steady_clock::now() - infer_begin).count();
 				std::cerr << "rknn infer failed frame_id=" << frame.frame_id << '\n';
 				camera.requeueBuffer(frame.buffer_index);
 				continue;
 			}
+			infer_ms = std::chrono::duration<double, std::milli>(
+				std::chrono::steady_clock::now() - infer_begin).count();
 			last_detections = std::move(detections);
 		}
 
@@ -756,9 +773,12 @@ int PerceptionPipeline::run() {
 			: config_.lidar_max_age_ms;
 		const bool has_lidar_cloud = have_candidate_cloud && lidar_delta_ms <= compensated_age_ms;
 
+		const auto fusion_begin = std::chrono::steady_clock::now();
 		distance_fusion.fuse(has_lidar_cloud ? &matched_cloud : nullptr,
 							 &last_detections,
 							 &fusion_diagnostics);
+		fusion_ms = std::chrono::duration<double, std::milli>(
+			std::chrono::steady_clock::now() - fusion_begin).count();
 
 		std::vector<TrackObservation> track_observations;
 		track_observations.reserve(last_detections.size());
@@ -774,15 +794,19 @@ int PerceptionPipeline::run() {
 			observation.angle_deg = fusion.pixelToCameraAngle(0.5F * static_cast<float>(det.left + det.right));
 			track_observations.push_back(observation);
 		}
+		const auto track_begin = std::chrono::steady_clock::now();
 		tracker.update(frame.frame_id, frame.timestamp_ms, track_observations, &track_estimates);
 		for (std::size_t i = 0; i < last_detections.size() && i < track_estimates.size(); ++i) {
 			if (track_estimates[i].filtered_distance_m >= 0.0F) {
 				last_detections[i].distance_m = track_estimates[i].filtered_distance_m;
 			}
 		}
+		track_ms = std::chrono::duration<double, std::milli>(
+			std::chrono::steady_clock::now() - track_begin).count();
 
 		bool ok = false;
 		if (frame.pixel_format == V4L2_PIX_FMT_NV12 && frame.cpu_addr != 0) {
+			const auto overlay_begin = std::chrono::steady_clock::now();
 			drawDetectionsNv12(reinterpret_cast<std::uint8_t*>(frame.cpu_addr),
 							   static_cast<int>(frame.width),
 							   static_cast<int>(frame.height),
@@ -818,9 +842,15 @@ int PerceptionPipeline::run() {
 							 8,
 							 2);
 			}
+			overlay_ms = std::chrono::duration<double, std::milli>(
+				std::chrono::steady_clock::now() - overlay_begin).count();
 
+			const auto encode_begin = std::chrono::steady_clock::now();
 			ok = encoder.encodeFrame(frame, false);
+			encode_submit_ms = std::chrono::duration<double, std::milli>(
+				std::chrono::steady_clock::now() - encode_begin).count();
 		} else if (isPacked422(frame.pixel_format) && frame.cpu_addr != 0) {
+			const auto overlay_begin = std::chrono::steady_clock::now();
 			if (actual_422_fourcc == 0) {
 				if (config_.forced_422_fourcc != 0) {
 					actual_422_fourcc = config_.forced_422_fourcc;
@@ -884,7 +914,10 @@ int PerceptionPipeline::run() {
 							 8,
 							 2);
 			}
+			overlay_ms = std::chrono::duration<double, std::milli>(
+				std::chrono::steady_clock::now() - overlay_begin).count();
 
+			const auto encode_begin = std::chrono::steady_clock::now();
 			ok = encoder.encodeNv12Cpu(nv12_scratch.data(),
 									   frame.width,
 									   frame.height,
@@ -892,6 +925,8 @@ int PerceptionPipeline::run() {
 									   frame.pts_us,
 									   frame.dts_us,
 									   false);
+				encode_submit_ms = std::chrono::duration<double, std::milli>(
+					std::chrono::steady_clock::now() - encode_begin).count();
 		} else {
 			std::cerr << "unsupported pixel format or unavailable cpu_addr, fourcc=0x"
 					  << std::hex << frame.pixel_format << std::dec
@@ -939,6 +974,20 @@ int PerceptionPipeline::run() {
 			const auto now = std::chrono::steady_clock::now();
 			const double elapsed_sec =
 				std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() / 1000.0;
+			std::uint32_t confirmed_target_count = 0;
+			std::uint32_t valid_distance_target_count = 0;
+			std::uint32_t ttc_alert_count = 0;
+			for (std::size_t i = 0; i < last_detections.size(); ++i) {
+				if (last_detections[i].distance_m >= 0.0F) {
+					++valid_distance_target_count;
+				}
+				if (i < track_estimates.size() && track_estimates[i].confirmed) {
+					++confirmed_target_count;
+					if (track_estimates[i].ttc_s > 0.0F && track_estimates[i].ttc_s <= 3.0F) {
+						++ttc_alert_count;
+					}
+				}
+			}
 			const std::string output_url = config_.webrtcEnabled() ? webrtc_publisher.rtcPlayUrl()
 												   : streamer.publishUrl();
 			RuntimeTelemetrySnapshot snapshot;
@@ -958,8 +1007,21 @@ int PerceptionPipeline::run() {
 			snapshot.lidar_allowed_age_ms = compensated_age_ms;
 			snapshot.runtime_sec = elapsed_sec;
 			snapshot.encode_fps = elapsed_sec > 1e-3 ? static_cast<double>(encode_frames) / elapsed_sec : 0.0;
+			snapshot.capture_to_encode_ms =
+				frame.timestamp_ms > 0 ? static_cast<double>(nowSteadyMs() - frame.timestamp_ms) : 0.0;
+			snapshot.preprocess_ms = preprocess_ms;
+			snapshot.infer_ms = infer_ms;
+			snapshot.fusion_ms = fusion_ms;
+			snapshot.track_ms = track_ms;
+			snapshot.overlay_ms = overlay_ms;
+			snapshot.encode_submit_ms = encode_submit_ms;
+			snapshot.lidar_points_total = has_lidar_cloud ? static_cast<std::uint32_t>(matched_cloud.points.size()) : 0U;
+			snapshot.target_count = static_cast<std::uint32_t>(last_detections.size());
+			snapshot.confirmed_target_count = confirmed_target_count;
+			snapshot.valid_distance_target_count = valid_distance_target_count;
+			snapshot.ttc_alert_count = ttc_alert_count;
 			snapshot.center_angle_deg = wrapSignedAngleDeg(-config_.lidar_offset_deg);
-			snapshot.camera_overlap_half_angle_deg = config_.lidar_fov_deg * 0.5F;
+			snapshot.camera_overlap_half_angle_deg = config_.camera_fov_deg * 0.5F;
 			snapshot.did_infer = do_infer;
 			snapshot.lidar_matched = has_lidar_cloud;
 			snapshot.targets = buildTelemetryTargets(fusion, last_detections, &track_estimates, &fusion_diagnostics);

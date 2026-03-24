@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+. "$ROOT_DIR/scripts/camera_device_utils.sh"
+
 APP_BIN="${APP_BIN:-$ROOT_DIR/build/perception_app}"
 if [[ ! -x "$APP_BIN" ]]; then
 	echo "perception_app not found: $APP_BIN"
@@ -11,7 +13,7 @@ if [[ ! -x "$APP_BIN" ]]; then
 	exit 1
 fi
 
-DEVICE="${DEVICE:-/dev/video0}"
+DEVICE="${DEVICE:-auto}"
 WIDTH="${WIDTH:-640}"
 HEIGHT="${HEIGHT:-480}"
 RUN_SECONDS="${RUN_SECONDS:-0}"
@@ -25,8 +27,9 @@ DUMP_H264_PATH="${DUMP_H264_PATH:-}"
 INFER_EVERY_N="${INFER_EVERY_N:-5}"
 LIDAR_PORT="${LIDAR_PORT:-/dev/ttyUSB0}"
 LIDAR_BAUD="${LIDAR_BAUD:-115200}"
+export RK3588_CAMERA_FOV_DEG="${RK3588_CAMERA_FOV_DEG:-55}"
 LIDAR_OFFSET_DEG="${LIDAR_OFFSET_DEG:-11.7}"
-LIDAR_FOV_DEG="${LIDAR_FOV_DEG:-60}"
+LIDAR_FOV_DEG="${LIDAR_FOV_DEG:-55}"
 LIDAR_WINDOW_HALF_DEG="${LIDAR_WINDOW_HALF_DEG:-2.5}"
 LIDAR_MIN_DIST_M="${LIDAR_MIN_DIST_M:-0.15}"
 LIDAR_MAX_DIST_M="${LIDAR_MAX_DIST_M:-8.0}"
@@ -66,7 +69,10 @@ if [[ "$START_DEBUG_UI" == "1" ]]; then
 	check_port_free "$DEBUG_UI_PORT"
 fi
 
+DEVICE="$(resolve_camera_device "$DEVICE")"
+
 echo "Starting perception_app in mode=${PUBLISH_MODE}"
+echo "Camera device: ${DEVICE}"
 echo "Telemetry path: ${RK3588_TELEMETRY_PATH}"
 echo "ZLM builtin page: http://<board-ip>:${RK3588_WEBRTC_HTTP_PORT}/webrtc/index.html?app=live&stream=camera&type=play"
 if [[ "$START_DEBUG_UI" == "1" ]]; then

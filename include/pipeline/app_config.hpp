@@ -33,8 +33,9 @@ struct AppConfig {
 
     std::string lidar_port = "/dev/ttyUSB0";
     int lidar_baud = 115200;
+    float camera_fov_deg = 55.0F;
     float lidar_offset_deg = 11.7F;
-    float lidar_fov_deg = 60.0F;
+    float lidar_fov_deg = 55.0F;
     float lidar_window_half_deg = 2.5F;
     float lidar_min_dist_m = 0.15F;
     float lidar_max_dist_m = 20.0F;

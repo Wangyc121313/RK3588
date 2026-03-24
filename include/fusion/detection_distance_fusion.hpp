@@ -30,6 +30,12 @@ struct DistanceFusionConfig {
     std::uint32_t track_max_idle_frames = 10;
     float smoothing_alpha = 0.34F;
     float outlier_jump_ratio = 0.45F;
+    int sparse_min_candidate_points = 2;
+    float sparse_min_detection_confidence = 0.60F;
+    int sparse_max_box_width_px = 42;
+    int sparse_max_box_height_px = 42;
+    float sparse_cluster_gap_scale = 0.12F;
+    float sparse_fallback_window_deg = 4.0F;
 };
 
 struct DistanceFusionDiagnostics {
@@ -139,6 +145,42 @@ private:
         return std::max(0.0F, distance_m);
     }
 
+    std::optional<float> estimateSparseDistance(const std::vector<CandidatePoint>& candidates,
+                                                const YoloDetection& det) const {
+        if (static_cast<int>(candidates.size()) < cfg_.sparse_min_candidate_points) {
+            return std::nullopt;
+        }
+        if (det.confidence < cfg_.sparse_min_detection_confidence) {
+            return std::nullopt;
+        }
+
+        const int box_width_px = std::max(0, det.right - det.left);
+        const int box_height_px = std::max(0, det.bottom - det.top);
+        if (box_width_px > cfg_.sparse_max_box_width_px || box_height_px > cfg_.sparse_max_box_height_px) {
+            return std::nullopt;
+        }
+
+        std::vector<float> distances;
+        distances.reserve(candidates.size());
+        for (const auto& candidate : candidates) {
+            distances.push_back(candidate.distance_m);
+        }
+        std::sort(distances.begin(), distances.end());
+
+        const float spread = distances.back() - distances.front();
+        const float median = distances[distances.size() / 2];
+        const float max_spread = std::max(cfg_.cluster_gap_m * 2.0F, median * cfg_.sparse_cluster_gap_scale);
+        if (spread > max_spread) {
+            return std::nullopt;
+        }
+
+        if ((distances.size() & 1U) == 0U) {
+            const std::size_t mid = distances.size() / 2;
+            return 0.5F * (distances[mid - 1] + distances[mid]);
+        }
+        return median;
+    }
+
     void ageTracks() {
         tracks_.erase(
             std::remove_if(
@@ -230,10 +272,26 @@ private:
         diagnostics.candidate_points = static_cast<int>(candidates.size());
         if (static_cast<int>(candidates.size()) < cfg_.min_candidate_points) {
             diagnostics.used_fallback = true;
-            const auto fallback = fusion_.medianDistanceInAngleWindow(cloud, center_angle, cfg_.window_half_deg);
+            const auto sparse = estimateSparseDistance(candidates, det);
+            if (sparse.has_value() && passesDistanceSanity(det, *sparse, static_cast<int>(candidates.size()))) {
+                diagnostics.raw_distance_m = *sparse;
+                diagnostics.smoothed_distance_m = *sparse;
+                diagnostics.cluster_points = static_cast<int>(candidates.size());
+                diagnostics.cluster_score = 0.25F * static_cast<float>(candidates.size());
+                return diagnostics;
+            }
+
+            const float fallback_window_deg = std::max(
+                cfg_.window_half_deg,
+                std::max(cfg_.sparse_fallback_window_deg, half_span_deg + cfg_.sector_expand_deg + 0.75F));
+            const auto fallback = fusion_.medianDistanceInAngleWindow(cloud, center_angle, fallback_window_deg);
             if (fallback.has_value()) {
-                diagnostics.raw_distance_m = *fallback;
-                diagnostics.smoothed_distance_m = *fallback;
+                if (passesDistanceSanity(det, *fallback, static_cast<int>(candidates.size()))) {
+                    diagnostics.raw_distance_m = *fallback;
+                    diagnostics.smoothed_distance_m = *fallback;
+                } else {
+                    diagnostics.rejected_by_sanity = true;
+                }
             }
             return diagnostics;
         }

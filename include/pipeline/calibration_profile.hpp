@@ -12,8 +12,9 @@ namespace rk3588::modules {
 
 struct CalibrationProfile {
     float raw_front_angle_deg = 0.0F;
+    float camera_fov_deg = 55.0F;
     float lidar_offset_deg = 0.0F;
-    float lidar_fov_deg = 60.0F;
+    float lidar_fov_deg = 55.0F;
     float lidar_window_half_deg = 2.5F;
     float lidar_min_dist_m = 0.15F;
     float lidar_max_dist_m = 20.0F;
@@ -52,6 +53,8 @@ inline bool parseCalibrationProfile(const std::string& text, CalibrationProfile*
         const std::string value = trimCopy(trimmed.substr(sep + 1));
         if (key == "raw_front_angle_deg") {
             parsed.raw_front_angle_deg = std::stof(value);
+        } else if (key == "camera_fov_deg") {
+            parsed.camera_fov_deg = std::stof(value);
         } else if (key == "lidar_offset_deg") {
             parsed.lidar_offset_deg = std::stof(value);
         } else if (key == "lidar_fov_deg") {
@@ -95,6 +98,7 @@ inline bool saveCalibrationProfile(const std::string& path, const CalibrationPro
 
     output << "# RK3588 camera-lidar calibration profile\n";
     output << "raw_front_angle_deg=" << profile.raw_front_angle_deg << "\n";
+    output << "camera_fov_deg=" << profile.camera_fov_deg << "\n";
     output << "lidar_offset_deg=" << profile.lidar_offset_deg << "\n";
     output << "lidar_fov_deg=" << profile.lidar_fov_deg << "\n";
     output << "lidar_window_half_deg=" << profile.lidar_window_half_deg << "\n";
@@ -108,6 +112,7 @@ inline void applyCalibrationProfile(const CalibrationProfile& profile, AppConfig
     if (config == nullptr) {
         return;
     }
+    config->camera_fov_deg = std::max(1.0F, profile.camera_fov_deg);
     config->lidar_offset_deg = profile.lidar_offset_deg;
     config->lidar_fov_deg = std::max(1.0F, profile.lidar_fov_deg);
     config->lidar_window_half_deg = std::max(0.5F, profile.lidar_window_half_deg);
