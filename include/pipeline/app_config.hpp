@@ -30,6 +30,7 @@ struct AppConfig {
     bool debug_video_hud = false;
     std::string telemetry_path;
     std::uint32_t telemetry_interval_ms = 1000;
+    bool enable_video_overlay = true;
 
     std::string lidar_port = "/dev/ttyUSB0";
     int lidar_baud = 115200;

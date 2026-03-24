@@ -807,19 +807,21 @@ int PerceptionPipeline::run() {
 		bool ok = false;
 		if (frame.pixel_format == V4L2_PIX_FMT_NV12 && frame.cpu_addr != 0) {
 			const auto overlay_begin = std::chrono::steady_clock::now();
-			drawDetectionsNv12(reinterpret_cast<std::uint8_t*>(frame.cpu_addr),
-							   static_cast<int>(frame.width),
-							   static_cast<int>(frame.height),
-							   static_cast<int>(frame.hor_stride > 0 ? frame.hor_stride : frame.width),
-							   last_detections,
-							   3);
+			if (config_.enable_video_overlay) {
+				drawDetectionsNv12(reinterpret_cast<std::uint8_t*>(frame.cpu_addr),
+						   static_cast<int>(frame.width),
+						   static_cast<int>(frame.height),
+						   static_cast<int>(frame.hor_stride > 0 ? frame.hor_stride : frame.width),
+						   last_detections,
+						   3);
+			}
 
 			const auto now = std::chrono::steady_clock::now();
 			const double elapsed_sec =
 				std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() / 1000.0;
 			const std::string output_url = config_.webrtcEnabled() ? webrtc_publisher.rtcPlayUrl()
 																   : streamer.publishUrl();
-			if (config_.debug_video_hud) {
+			if (config_.enable_video_overlay && config_.debug_video_hud) {
 				const auto hud_lines = buildHudLines(frame.frame_id,
 											 input_frames,
 											 output_packets,
@@ -879,19 +881,21 @@ int PerceptionPipeline::run() {
 				continue;
 			}
 
-			drawDetectionsNv12(nv12_scratch.data(),
-							   static_cast<int>(frame.width),
-							   static_cast<int>(frame.height),
-							   static_cast<int>(nv12_stride),
-							   last_detections,
-							   3);
+			if (config_.enable_video_overlay) {
+				drawDetectionsNv12(nv12_scratch.data(),
+						   static_cast<int>(frame.width),
+						   static_cast<int>(frame.height),
+						   static_cast<int>(nv12_stride),
+						   last_detections,
+						   3);
+			}
 
 			const auto now = std::chrono::steady_clock::now();
 			const double elapsed_sec =
 				std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() / 1000.0;
 			const std::string output_url = config_.webrtcEnabled() ? webrtc_publisher.rtcPlayUrl()
 																   : streamer.publishUrl();
-			if (config_.debug_video_hud) {
+			if (config_.enable_video_overlay && config_.debug_video_hud) {
 				const auto hud_lines = buildHudLines(frame.frame_id,
 											 input_frames,
 											 output_packets,

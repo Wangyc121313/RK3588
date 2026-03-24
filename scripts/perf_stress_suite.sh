@@ -21,7 +21,7 @@ if [[ "${1:-}" == "--" ]]; then
 fi
 
 APP_BIN="${APP_BIN:-./build/perception_app}"
-TARGET_FPS="${TARGET_FPS:-25}"
+TARGET_FPS="${TARGET_FPS:-30}"
 TELEMETRY_INTERVAL_MS="${TELEMETRY_INTERVAL_MS:-200}"
 NET_IFACE="${NET_IFACE:-}"
 CPU_COUNT="$(nproc 2>/dev/null || echo 1)"

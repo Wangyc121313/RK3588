@@ -14,6 +14,11 @@ bool envEnabled(const char* name) {
     return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 
+bool envDisabled(const char* name) {
+    const char* env = std::getenv(name);
+    return env != nullptr && env[0] != '\0' && env[0] != '0';
+}
+
 std::string envStringOrEmpty(const char* name) {
     const char* env = std::getenv(name);
     return env == nullptr ? std::string() : std::string(env);
@@ -90,6 +95,7 @@ int main(int argc, char* argv[]) {
     config.camera_fov_deg = std::max(1.0F, envFloatOr("RK3588_CAMERA_FOV_DEG", config.camera_fov_deg));
     config.swap_uv = envEnabled("RK3588_YUV_SWAP_UV");
     config.forced_422_fourcc = forced422FourccFromEnv();
+    config.enable_video_overlay = !envDisabled("RK3588_DISABLE_VIDEO_OVERLAY");
     config.debug_video_hud = envEnabled("RK3588_DEBUG_VIDEO_HUD");
     config.telemetry_path = envStringOrEmpty("RK3588_TELEMETRY_PATH");
     config.telemetry_interval_ms = envUintOr("RK3588_TELEMETRY_INTERVAL_MS", config.telemetry_interval_ms);
