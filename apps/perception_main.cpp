@@ -65,6 +65,7 @@ std::uint32_t forced422FourccFromEnv() {
 }  // namespace
 
 int main(int argc, char* argv[]) {
+    // 便于传参，同时也支持环境变量配置，环境变量优先级更高；假设需要指定某个具体参数，那么需要把它前面的参数也传一遍（如果不想改的话就传默认值），因此建议使用环境变量的方式来覆盖默认配置项
     rk3588::modules::AppConfig config;
     config.camera_device = argc > 1 ? argv[1] : config.camera_device;
     config.camera_width = argc > 2 ? static_cast<std::uint32_t>(std::max(1, std::atoi(argv[2]))) : config.camera_width;

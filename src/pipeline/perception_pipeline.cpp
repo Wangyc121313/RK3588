@@ -596,6 +596,7 @@ int PerceptionPipeline::run() {
 	std::vector<DistanceFusionDiagnostics> fusion_diagnostics;
 	std::vector<TrackEstimate> track_estimates;
 	std::uint32_t actual_422_fourcc = 0;
+	bool logged_rga_422_fallback = false;
 	FILE* dump_file = nullptr;
 
 	if (!config_.dump_h264_path.empty()) {
@@ -856,6 +857,8 @@ int PerceptionPipeline::run() {
 			if (actual_422_fourcc == 0) {
 				if (config_.forced_422_fourcc != 0) {
 					actual_422_fourcc = config_.forced_422_fourcc;
+				} else if (frame.pixel_format == V4L2_PIX_FMT_YUYV) {
+					actual_422_fourcc = V4L2_PIX_FMT_YUYV;
 				} else {
 					actual_422_fourcc = detectPacked422Fourcc(
 						reinterpret_cast<const std::uint8_t*>(frame.cpu_addr),
@@ -868,17 +871,41 @@ int PerceptionPipeline::run() {
 			}
 
 			const std::uint32_t nv12_stride = (frame.width + 15U) & ~15U;
-			if (!convertPacked422ToNv12(reinterpret_cast<const std::uint8_t*>(frame.cpu_addr),
-										frame.width,
-										frame.height,
-										frame.hor_stride,
-										actual_422_fourcc,
-										nv12_stride,
-										config_.swap_uv,
-										&nv12_scratch)) {
-				std::cerr << "packed422->nv12 convert failed frame_id=" << frame.frame_id << '\n';
-				camera.requeueBuffer(frame.buffer_index);
-				continue;
+			const std::size_t nv12_size = static_cast<std::size_t>(nv12_stride) * frame.height * 3U / 2U;
+			if (nv12_scratch.size() != nv12_size) {
+				nv12_scratch.resize(nv12_size);
+			}
+
+			bool converted = false;
+			if (!config_.swap_uv) {
+				converted = rga.processPacked422ToNv12(
+					reinterpret_cast<const std::uint8_t*>(frame.cpu_addr),
+					actual_422_fourcc,
+					frame.hor_stride,
+					nv12_scratch.data(),
+					nv12_stride);
+			}
+
+			if (!converted) {
+				if (!logged_rga_422_fallback && !config_.swap_uv) {
+					std::cout << "packed422->nv12: fallback to CPU conversion"
+							  << " fourcc=" << fourccName(actual_422_fourcc)
+							  << " src_stride=" << frame.hor_stride
+							  << " dst_stride=" << nv12_stride << '\n';
+					logged_rga_422_fallback = true;
+				}
+				if (!convertPacked422ToNv12(reinterpret_cast<const std::uint8_t*>(frame.cpu_addr),
+											frame.width,
+											frame.height,
+											frame.hor_stride,
+											actual_422_fourcc,
+											nv12_stride,
+											config_.swap_uv,
+											&nv12_scratch)) {
+					std::cerr << "packed422->nv12 convert failed frame_id=" << frame.frame_id << '\n';
+					camera.requeueBuffer(frame.buffer_index);
+					continue;
+				}
 			}
 
 			if (config_.enable_video_overlay) {

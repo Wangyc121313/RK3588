@@ -31,6 +31,20 @@ bool mapV4l2ToRgaFormatAndSize(std::uint32_t fourcc, int width, int height, int*
     }
 }
 
+bool mapPacked422FourccToRgaFormat(std::uint32_t fourcc, int* rga_format) {
+    if (rga_format == nullptr) {
+        return false;
+    }
+
+    switch (fourcc) {
+        case V4L2_PIX_FMT_YUYV:
+            *rga_format = RK_FORMAT_YUYV_422;
+            return true;
+        default:
+            return false;
+    }
+}
+
 }  // namespace
 
 bool RGAProcessor::init(int src_w, int src_h, int dst_w, int dst_h) {
@@ -189,6 +203,75 @@ bool RGAProcessor::processDmaFdToRgbResize(int src_dma_fd, std::uint32_t src_fou
 
     releasebuffer_handle(src_handle);
     releasebuffer_handle(src_rgb_handle);
+    releasebuffer_handle(dst_handle);
+    return true;
+}
+
+bool RGAProcessor::processPacked422ToNv12(const std::uint8_t* src,
+                                          std::uint32_t src_fourcc,
+                                          std::uint32_t src_stride,
+                                          std::uint8_t* dst_nv12,
+                                          std::uint32_t dst_stride) {
+    if (src == nullptr || dst_nv12 == nullptr || src_w_ <= 0 || src_h_ <= 0) {
+        return false;
+    }
+
+    int src_rga_format = 0;
+    if (!mapPacked422FourccToRgaFormat(src_fourcc, &src_rga_format)) {
+        return false;
+    }
+
+    const std::uint32_t min_src_stride = static_cast<std::uint32_t>(src_w_) * 2U;
+    const std::uint32_t min_dst_stride = static_cast<std::uint32_t>(src_w_);
+    if (src_stride < min_src_stride || dst_stride < min_dst_stride || (src_stride & 1U) != 0U) {
+        return false;
+    }
+    const int src_wstride_px = static_cast<int>(src_stride / 2U);
+    const int dst_wstride_px = static_cast<int>(dst_stride);
+
+    const int src_size = static_cast<int>(src_stride) * src_h_;
+    const int dst_size = static_cast<int>(dst_stride) * src_h_ * 3 / 2;
+
+    auto src_handle = importbuffer_virtualaddr(const_cast<std::uint8_t*>(src), src_size);
+    auto dst_handle = importbuffer_virtualaddr(dst_nv12, dst_size);
+    if (src_handle == 0 || dst_handle == 0) {
+        if (src_handle) {
+            releasebuffer_handle(src_handle);
+        }
+        if (dst_handle) {
+            releasebuffer_handle(dst_handle);
+        }
+        return false;
+    }
+
+    rga_buffer_t src_img = wrapbuffer_handle(src_handle,
+                                     src_w_,
+                                     src_h_,
+                                     src_rga_format,
+                                     src_wstride_px,
+                                     src_h_);
+    rga_buffer_t dst_img = wrapbuffer_handle(dst_handle,
+                                     src_w_,
+                                     src_h_,
+                                     RK_FORMAT_YCbCr_420_SP,
+                                     dst_wstride_px,
+                                     src_h_);
+
+    IM_STATUS status = imcheck(src_img, dst_img, {}, {}, 0);
+    if (status != IM_STATUS_NOERROR) {
+        releasebuffer_handle(src_handle);
+        releasebuffer_handle(dst_handle);
+        return false;
+    }
+
+    status = imcvtcolor(src_img, dst_img, src_rga_format, RK_FORMAT_YCbCr_420_SP);
+    if (status != IM_STATUS_SUCCESS) {
+        releasebuffer_handle(src_handle);
+        releasebuffer_handle(dst_handle);
+        return false;
+    }
+
+    releasebuffer_handle(src_handle);
     releasebuffer_handle(dst_handle);
     return true;
 }

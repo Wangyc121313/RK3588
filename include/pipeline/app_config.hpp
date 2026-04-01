@@ -47,7 +47,8 @@ struct AppConfig {
 
     [[nodiscard]] bool rtspEnabled() const {
         return publish_mode == "rtsp" || publish_mode == "both";
-    }
+    } 
+    // nodiscard用来表示函数的返回值不应该被忽略，如果调用者忽略了这个返回值，编译器会发出警告。
 
     [[nodiscard]] bool webrtcEnabled() const {
         return publish_mode == "webrtc" || publish_mode == "both";
