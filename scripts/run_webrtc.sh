@@ -71,12 +71,29 @@ fi
 
 DEVICE="$(resolve_camera_device "$DEVICE")"
 
+LOCAL_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+WEBRTC_PLAYER_PATH="/webrtc/index.html?app=live&stream=camera&type=play"
+ZLM_LOCAL_URL="http://127.0.0.1:${RK3588_WEBRTC_HTTP_PORT}${WEBRTC_PLAYER_PATH}"
+DEBUG_UI_LOCAL_URL="http://127.0.0.1:${DEBUG_UI_PORT}/?app=live&stream=camera"
+ZLM_LAN_URL=""
+DEBUG_UI_LAN_URL=""
+if [[ -n "$LOCAL_IP" ]]; then
+	ZLM_LAN_URL="http://${LOCAL_IP}:${RK3588_WEBRTC_HTTP_PORT}${WEBRTC_PLAYER_PATH}"
+	DEBUG_UI_LAN_URL="http://${LOCAL_IP}:${DEBUG_UI_PORT}/?app=live&stream=camera"
+fi
+
 echo "Starting perception_app in mode=${PUBLISH_MODE}"
 echo "Camera device: ${DEVICE}"
 echo "Telemetry path: ${RK3588_TELEMETRY_PATH}"
-echo "ZLM builtin page: http://<board-ip>:${RK3588_WEBRTC_HTTP_PORT}/webrtc/index.html?app=live&stream=camera&type=play"
+echo "Open in browser (local): ${ZLM_LOCAL_URL}"
+if [[ -n "$ZLM_LAN_URL" ]]; then
+	echo "Open in browser (LAN):   ${ZLM_LAN_URL}"
+fi
 if [[ "$START_DEBUG_UI" == "1" ]]; then
-	echo "Custom debug UI: http://<board-ip>:${DEBUG_UI_PORT}/?app=live&stream=camera"
+	echo "Debug UI (local):        ${DEBUG_UI_LOCAL_URL}"
+	if [[ -n "$DEBUG_UI_LAN_URL" ]]; then
+		echo "Debug UI (LAN):          ${DEBUG_UI_LAN_URL}"
+	fi
 	nohup python3 "$ROOT_DIR/tools/webrtc_debug_ui/server.py" \
 		--host "$DEBUG_UI_HOST" \
 		--port "$DEBUG_UI_PORT" \

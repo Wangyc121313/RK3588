@@ -48,10 +48,20 @@ fi
 
 DEVICE="$(resolve_camera_device "$DEVICE")"
 
+LOCAL_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+RTSP_LOCAL_URL="${RTSP_URL/0.0.0.0/127.0.0.1}"
+RTSP_LAN_URL=""
+if [[ -n "$LOCAL_IP" ]]; then
+	RTSP_LAN_URL="${RTSP_URL/0.0.0.0/$LOCAL_IP}"
+fi
+
 echo "Starting perception_app in mode=${PUBLISH_MODE}"
 echo "Camera device: ${DEVICE}"
 echo "RTSP URL: ${RTSP_URL}"
-echo "VLC preview: vlc ${RTSP_URL}"
+echo "VLC preview (local): vlc ${RTSP_LOCAL_URL}"
+if [[ -n "$RTSP_LAN_URL" ]]; then
+	echo "VLC preview (LAN):   vlc ${RTSP_LAN_URL}"
+fi
 
 CMD=(
 	"$APP_BIN"

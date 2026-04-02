@@ -28,14 +28,13 @@
 #include "pipeline/calibration_profile.hpp"
 #include "pipeline/runtime_telemetry.hpp"
 #include "infer/rknn_runner.hpp"
+#include "lidar/lidar_adapter.hpp"
+#include "lidar/lidar_reader.hpp"
 #include "video/mpp_encoder.hpp"
 #include "video/nv12_overlay.hpp"
 #include "video/rga_processor.hpp"
 #include "video/webrtc_publisher.hpp"
 #include "video/zlm_rtsp_publisher.hpp"
-
-#include "sl_lidar.h"
-#include "sl_lidar_driver.h"
 
 namespace rk3588::modules {
 
@@ -63,20 +62,6 @@ const char* fourccName(std::uint32_t fourcc) {
 	}
 }
 
-class DriverDeleter {
-public:
-	void operator()(sl::ILidarDriver* driver) const {
-		delete driver;
-	}
-};
-
-class ChannelDeleter {
-public:
-	void operator()(sl::IChannel* channel) const {
-		delete channel;
-	}
-};
-
 std::uint64_t nowSteadyMs() {
 	return static_cast<std::uint64_t>(
 		std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -92,18 +77,6 @@ float wrapSignedAngleDeg(float angle_deg) {
 		wrapped -= 360.0F;
 	}
 	return wrapped;
-}
-
-float lidarAngleDegrees(const sl_lidar_response_measurement_node_hq_t& node) {
-	return static_cast<float>(node.angle_z_q14) * 90.0F / 16384.0F;
-}
-
-float lidarDistanceMeters(const sl_lidar_response_measurement_node_hq_t& node) {
-	return static_cast<float>(node.dist_mm_q2) / 4.0F / 1000.0F;
-}
-
-bool lidarPointValid(const sl_lidar_response_measurement_node_hq_t& node) {
-	return node.dist_mm_q2 != 0;
 }
 
 std::string formatDetectionBrief(const YoloDetection& det) {
@@ -484,34 +457,18 @@ int PerceptionPipeline::run() {
 	MultiTargetTrackerConfig tracker_cfg;
 	tracker_cfg.max_center_delta_px = std::max(72.0F, static_cast<float>(config_.camera_width) * 0.16F);
 	MultiTargetTracker tracker(tracker_cfg);
+	LidarReader lidar_reader;
+	LidarAdapter lidar_adapter;
+	LidarReader::Config lidar_cfg;
+	lidar_cfg.port = config_.lidar_port.c_str();
+	lidar_cfg.baud = config_.lidar_baud;
+	lidar_cfg.min_distance_m = config_.lidar_min_dist_m;
+	lidar_cfg.max_distance_m = config_.lidar_max_dist_m;
 
 	std::atomic<bool> lidar_running {true};
 	std::atomic<std::uint64_t> lidar_scan_count {0};
 	std::thread lidar_thread([&] {
-		auto driver_result = sl::createLidarDriver();
-		if (!driver_result || *driver_result == nullptr) {
-			std::cerr << "lidar: failed to create driver\n";
-			return;
-		}
-		std::unique_ptr<sl::ILidarDriver, DriverDeleter> driver(*driver_result);
-
-		auto channel_result = sl::createSerialPortChannel(config_.lidar_port, config_.lidar_baud);
-		if (!channel_result || *channel_result == nullptr) {
-			std::cerr << "lidar: failed to open serial channel " << config_.lidar_port << '\n';
-			return;
-		}
-		std::unique_ptr<sl::IChannel, ChannelDeleter> channel(*channel_result);
-
-		sl_result result = driver->connect(channel.get());
-		if (SL_IS_FAIL(result)) {
-			std::cerr << "lidar: connect failed, code=" << result << '\n';
-			return;
-		}
-
-		result = driver->startScan(false, true);
-		if (SL_IS_FAIL(result)) {
-			std::cerr << "lidar: startScan failed, code=" << result << '\n';
-			driver->disconnect();
+		if (!lidar_reader.start(lidar_cfg)) {
 			return;
 		}
 
@@ -524,49 +481,20 @@ int PerceptionPipeline::run() {
 				  << " max_dist=" << config_.lidar_max_dist_m
 				  << " max_age_ms=" << config_.lidar_max_age_ms << '\n';
 
-		std::uint64_t scan_id = 0;
 		while (lidar_running.load()) {
-			sl_lidar_response_measurement_node_hq_t nodes[8192];
-			size_t node_count = sizeof(nodes) / sizeof(nodes[0]);
-			result = driver->grabScanDataHq(nodes, node_count, 200);
-			if (SL_IS_FAIL(result)) {
-				if (result == SL_RESULT_OPERATION_TIMEOUT) {
-					continue;
-				}
-				std::cerr << "lidar: grabScanDataHq failed, code=" << result << '\n';
+			auto cloud = lidar_reader.poll(200U);
+			if (!cloud.has_value()) {
 				continue;
 			}
 
-			driver->ascendScanData(nodes, node_count);
-
-			rk3588::core::PointCloudPacket cloud;
-			cloud.scan_id = scan_id++;
-			cloud.timestamp_ms = nowSteadyMs();
-			cloud.points.reserve(node_count);
-
-			for (size_t i = 0; i < node_count; ++i) {
-				if (!lidarPointValid(nodes[i])) {
-					continue;
-				}
-				const float dist = lidarDistanceMeters(nodes[i]);
-				if (dist < config_.lidar_min_dist_m || dist > config_.lidar_max_dist_m) {
-					continue;
-				}
-
-				rk3588::core::LidarPoint point;
-				point.angle_deg = SensorFusion::wrap360(lidarAngleDegrees(nodes[i]));
-				point.distance_m = dist;
-				cloud.points.push_back(point);
-			}
-
-			if (!cloud.points.empty()) {
-				lidar_buffer.write(std::move(cloud));
+			auto adapted = lidar_adapter.adapt(*cloud);
+			if (!adapted.points.empty()) {
+				lidar_buffer.write(std::move(adapted));
 				lidar_scan_count.fetch_add(1);
 			}
 		}
 
-		driver->stop();
-		driver->disconnect();
+		lidar_reader.stop();
 	});
 
 	const auto stop_lidar = [&] {
