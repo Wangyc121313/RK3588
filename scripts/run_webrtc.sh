@@ -42,6 +42,7 @@ DEBUG_UI_PORT="${DEBUG_UI_PORT:-8090}"
 DEBUG_UI_ZLM_HOST="${DEBUG_UI_ZLM_HOST:-127.0.0.1}"
 START_DEBUG_UI="${START_DEBUG_UI:-1}"
 DEBUG_UI_LOG_PATH="${DEBUG_UI_LOG_PATH:-/tmp/rk3588_webrtc_debug_ui.log}"
+DEBUG_UI_BIN="${DEBUG_UI_BIN:-$ROOT_DIR/build/webrtc_debug_ui_server}"
 export RK3588_TELEMETRY_PATH="${RK3588_TELEMETRY_PATH:-/tmp/rk3588_perception_telemetry.jsonl}"
 export RK3588_TELEMETRY_INTERVAL_MS="${RK3588_TELEMETRY_INTERVAL_MS:-500}"
 
@@ -94,15 +95,29 @@ if [[ "$START_DEBUG_UI" == "1" ]]; then
 	if [[ -n "$DEBUG_UI_LAN_URL" ]]; then
 		echo "Debug UI (LAN):          ${DEBUG_UI_LAN_URL}"
 	fi
-	nohup python3 "$ROOT_DIR/tools/webrtc_debug_ui/server.py" \
-		--host "$DEBUG_UI_HOST" \
-		--port "$DEBUG_UI_PORT" \
-		--zlm-host "$DEBUG_UI_ZLM_HOST" \
-		--zlm-http-port "$RK3588_WEBRTC_HTTP_PORT" \
-		--telemetry-path "$RK3588_TELEMETRY_PATH" \
-		--default-app live \
-		--default-stream camera \
-		>"$DEBUG_UI_LOG_PATH" 2>&1 &
+	if [[ -x "$DEBUG_UI_BIN" ]]; then
+		echo "Debug UI backend: C++ (${DEBUG_UI_BIN})"
+		nohup "$DEBUG_UI_BIN" \
+			--host "$DEBUG_UI_HOST" \
+			--port "$DEBUG_UI_PORT" \
+			--zlm-host "$DEBUG_UI_ZLM_HOST" \
+			--zlm-http-port "$RK3588_WEBRTC_HTTP_PORT" \
+			--telemetry-path "$RK3588_TELEMETRY_PATH" \
+			--default-app live \
+			--default-stream camera \
+			>"$DEBUG_UI_LOG_PATH" 2>&1 &
+	else
+		echo "Debug UI backend: Python fallback"
+		nohup python3 "$ROOT_DIR/tools/webrtc_debug_ui/server.py" \
+			--host "$DEBUG_UI_HOST" \
+			--port "$DEBUG_UI_PORT" \
+			--zlm-host "$DEBUG_UI_ZLM_HOST" \
+			--zlm-http-port "$RK3588_WEBRTC_HTTP_PORT" \
+			--telemetry-path "$RK3588_TELEMETRY_PATH" \
+			--default-app live \
+			--default-stream camera \
+			>"$DEBUG_UI_LOG_PATH" 2>&1 &
+	fi
 	DEBUG_UI_PID=$!
 	echo "Debug UI log: ${DEBUG_UI_LOG_PATH}"
 	cleanup_debug_ui() {

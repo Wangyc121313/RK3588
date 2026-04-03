@@ -1,1 +1,2 @@
-# Reserved for diagnostics targets; keep file present for stable structure.
+add_executable(webrtc_debug_ui_server ${CMAKE_SOURCE_DIR}/tools/webrtc_debug_ui/server.cpp)
+target_link_libraries(webrtc_debug_ui_server PRIVATE project_warnings)
