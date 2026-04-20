@@ -16,7 +16,9 @@ struct TelemetryLidarPoint {
 struct TelemetryTarget {
     int track_id = -1;
     std::uint32_t track_age_frames = 0;
+    std::uint32_t track_idle_frames = 0;
     bool track_confirmed = false;
+    bool track_is_ghost = false;
     int class_id = -1;
     std::string class_name;
     float confidence = 0.0F;

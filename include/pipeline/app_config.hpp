@@ -30,6 +30,9 @@ struct AppConfig {
     bool debug_video_hud = false;
     std::string telemetry_path;
     std::uint32_t telemetry_interval_ms = 1000;
+    std::string pseudo_label_path;
+    std::uint32_t pseudo_label_max_lines = 5000;
+    std::string pseudo_label_sequence_id;
     bool enable_video_overlay = true;
 
     std::string lidar_port = "/dev/ttyUSB0";
@@ -41,6 +44,14 @@ struct AppConfig {
     float lidar_min_dist_m = 0.15F;
     float lidar_max_dist_m = 20.0F;
     std::uint64_t lidar_max_age_ms = 120U;
+    std::string distance_fusion_mode = "robust";
+
+    float tracker_min_iou_for_match = 0.05F;
+    float tracker_iou_cost_weight = 0.40F;
+    float tracker_center_velocity_alpha = 0.28F;
+    float tracker_ghost_velocity_decay = 0.78F;
+    std::uint32_t tracker_ghost_keep_frames = 4;
+    std::uint32_t tracker_max_idle_frames = 12;
 
     bool swap_uv = false;
     std::uint32_t forced_422_fourcc = 0;

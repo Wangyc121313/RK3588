@@ -14,6 +14,7 @@
 namespace rk3588::modules {
 
 struct DistanceFusionConfig {
+    bool use_robust_estimator = true;
     float min_distance_m = 0.15F;
     float max_distance_m = 20.0F;
     float window_half_deg = 2.5F;
@@ -145,6 +146,25 @@ private:
         return std::max(0.0F, distance_m);
     }
 
+    std::optional<float> estimateLegacyDistance(const rk3588::core::PointCloudPacket& cloud,
+                                                const std::vector<CandidatePoint>& candidates,
+                                                float center_angle) const {
+        if (static_cast<int>(candidates.size()) >= cfg_.min_candidate_points) {
+            std::vector<float> distances;
+            distances.reserve(candidates.size());
+            for (const auto& candidate : candidates) {
+                distances.push_back(candidate.distance_m);
+            }
+            std::sort(distances.begin(), distances.end());
+            if ((distances.size() & 1U) == 0U) {
+                const std::size_t mid = distances.size() / 2;
+                return 0.5F * (distances[mid - 1] + distances[mid]);
+            }
+            return distances[distances.size() / 2];
+        }
+        return fusion_.medianDistanceInAngleWindow(cloud, center_angle, cfg_.window_half_deg);
+    }
+
     std::optional<float> estimateSparseDistance(const std::vector<CandidatePoint>& candidates,
                                                 const YoloDetection& det) const {
         if (static_cast<int>(candidates.size()) < cfg_.sparse_min_candidate_points) {
@@ -270,6 +290,25 @@ private:
         }
 
         diagnostics.candidate_points = static_cast<int>(candidates.size());
+
+        if (!cfg_.use_robust_estimator) {
+            if (static_cast<int>(candidates.size()) < cfg_.min_candidate_points) {
+                diagnostics.used_fallback = true;
+            }
+
+            const auto legacy = estimateLegacyDistance(cloud, candidates, center_angle);
+            if (legacy.has_value()) {
+                if (passesDistanceSanity(det, *legacy, static_cast<int>(candidates.size()))) {
+                    diagnostics.raw_distance_m = *legacy;
+                    diagnostics.smoothed_distance_m = *legacy;
+                    diagnostics.cluster_points = static_cast<int>(candidates.size());
+                } else {
+                    diagnostics.rejected_by_sanity = true;
+                }
+            }
+            return diagnostics;
+        }
+
         if (static_cast<int>(candidates.size()) < cfg_.min_candidate_points) {
             diagnostics.used_fallback = true;
             const auto sparse = estimateSparseDistance(candidates, det);

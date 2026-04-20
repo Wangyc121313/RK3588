@@ -130,7 +130,9 @@ void RuntimeTelemetrySink::writeSnapshot(const RuntimeTelemetrySnapshot& snapsho
         json << '{'
                          << "\"track_id\":" << target.track_id << ','
                          << "\"track_age_frames\":" << target.track_age_frames << ','
+                         << "\"track_idle_frames\":" << target.track_idle_frames << ','
                          << "\"track_confirmed\":" << (target.track_confirmed ? "true" : "false") << ','
+                         << "\"track_is_ghost\":" << (target.track_is_ghost ? "true" : "false") << ','
              << "\"class_id\":" << target.class_id << ','
              << "\"class_name\":\"" << escapeJson(target.class_name) << "\"," 
              << "\"confidence\":" << target.confidence << ','

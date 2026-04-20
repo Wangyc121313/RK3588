@@ -26,6 +26,7 @@
 #include "fusion/multi_target_tracker.hpp"
 #include "fusion/sensor_fusion.hpp"
 #include "pipeline/calibration_profile.hpp"
+#include "pipeline/pseudo_label_sink.hpp"
 #include "pipeline/runtime_telemetry.hpp"
 #include "infer/rknn_runner.hpp"
 #include "lidar/lidar_adapter.hpp"
@@ -173,7 +174,9 @@ std::vector<TelemetryTarget> buildTelemetryTargets(const SensorFusion& fusion,
 		TelemetryTarget target;
 		target.track_id = track != nullptr ? track->track_id : -1;
 		target.track_age_frames = track != nullptr ? track->age_frames : 0;
+		target.track_idle_frames = track != nullptr ? track->idle_frames : 0;
 		target.track_confirmed = track != nullptr ? track->confirmed : false;
+		target.track_is_ghost = track != nullptr ? track->is_ghost : false;
 		target.class_id = det.class_id;
 		target.class_name = det.class_name;
 		target.confidence = det.confidence;
@@ -441,6 +444,10 @@ int PerceptionPipeline::run() {
 	ZlmRtspPublisher streamer;
 	WebRtcPublisher webrtc_publisher(config_.webrtc_url);
 	RuntimeTelemetrySink telemetry(config_.telemetry_path, config_.telemetry_interval_ms);
+	PseudoLabelSink pseudo_labels(config_.pseudo_label_path,
+						 config_.pseudo_label_max_lines,
+						 config_.pseudo_label_sequence_id,
+						 static_cast<std::uint32_t>(std::max(1, config_.fps)));
 
 	FusionConfig fusion_cfg;
 	fusion_cfg.image_width = static_cast<int>(config_.camera_width);
@@ -450,13 +457,26 @@ int PerceptionPipeline::run() {
 	fusion_cfg.min_valid_distance_m = config_.lidar_min_dist_m;
 	SensorFusion fusion(fusion_cfg);
 	DistanceFusionConfig distance_fusion_cfg;
+	distance_fusion_cfg.use_robust_estimator = config_.distance_fusion_mode != "legacy";
 	distance_fusion_cfg.min_distance_m = config_.lidar_min_dist_m;
 	distance_fusion_cfg.max_distance_m = config_.lidar_max_dist_m;
 	distance_fusion_cfg.window_half_deg = config_.lidar_window_half_deg;
 	DetectionDistanceFusion distance_fusion(fusion, distance_fusion_cfg);
+	std::cout << "distance_fusion_mode="
+			  << (distance_fusion_cfg.use_robust_estimator ? "robust" : "legacy") << '\n';
 	MultiTargetTrackerConfig tracker_cfg;
 	tracker_cfg.max_center_delta_px = std::max(72.0F, static_cast<float>(config_.camera_width) * 0.16F);
+	tracker_cfg.min_iou_for_match = config_.tracker_min_iou_for_match;
+	tracker_cfg.iou_cost_weight = config_.tracker_iou_cost_weight;
+	tracker_cfg.center_velocity_alpha = config_.tracker_center_velocity_alpha;
+	tracker_cfg.ghost_velocity_decay = config_.tracker_ghost_velocity_decay;
+	tracker_cfg.ghost_keep_frames = config_.tracker_ghost_keep_frames;
+	tracker_cfg.max_idle_frames = config_.tracker_max_idle_frames;
 	MultiTargetTracker tracker(tracker_cfg);
+	std::cout << "tracker_cfg: min_iou=" << tracker_cfg.min_iou_for_match
+			  << " iou_weight=" << tracker_cfg.iou_cost_weight
+			  << " ghost_keep=" << tracker_cfg.ghost_keep_frames
+			  << " max_idle=" << tracker_cfg.max_idle_frames << '\n';
 	LidarReader lidar_reader;
 	LidarAdapter lidar_adapter;
 	LidarReader::Config lidar_cfg;
@@ -732,6 +752,24 @@ int PerceptionPipeline::run() {
 		}
 		track_ms = std::chrono::duration<double, std::milli>(
 			std::chrono::steady_clock::now() - track_begin).count();
+
+		if (pseudo_labels.enabled()) {
+			pseudo_labels.writeFrame(config_.camera_device,
+							 frame.frame_id,
+							 frame.timestamp_ms,
+							 has_lidar_cloud,
+							 lidar_delta_ms,
+							 config_.camera_fov_deg,
+							 config_.lidar_offset_deg,
+							 config_.lidar_fov_deg,
+							 config_.lidar_window_half_deg,
+							 config_.lidar_min_dist_m,
+							 config_.lidar_max_dist_m,
+							 config_.lidar_max_age_ms,
+							 config_.calibration_profile_path,
+							 last_detections,
+							 track_estimates);
+		}
 
 		bool ok = false;
 		if (frame.pixel_format == V4L2_PIX_FMT_NV12 && frame.cpu_addr != 0) {

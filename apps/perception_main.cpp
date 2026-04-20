@@ -100,7 +100,23 @@ int main(int argc, char* argv[]) {
     config.debug_video_hud = envEnabled("RK3588_DEBUG_VIDEO_HUD");
     config.telemetry_path = envStringOrEmpty("RK3588_TELEMETRY_PATH");
     config.telemetry_interval_ms = envUintOr("RK3588_TELEMETRY_INTERVAL_MS", config.telemetry_interval_ms);
+    config.pseudo_label_path = envStringOrEmpty("RK3588_PSEUDO_LABEL_PATH");
+    config.pseudo_label_max_lines = envUintOr("RK3588_PSEUDO_LABEL_MAX_LINES", config.pseudo_label_max_lines);
+    config.pseudo_label_sequence_id = envStringOrEmpty("RK3588_PSEUDO_LABEL_SEQUENCE_ID");
     config.calibration_profile_path = envStringOrEmpty("RK3588_CALIBRATION_PROFILE");
+    config.distance_fusion_mode = envStringOrEmpty("RK3588_DISTANCE_FUSION_MODE").empty()
+        ? config.distance_fusion_mode
+        : envStringOrEmpty("RK3588_DISTANCE_FUSION_MODE");
+    config.tracker_min_iou_for_match = std::max(0.0F,
+        std::min(0.95F, envFloatOr("RK3588_TRACKER_MIN_IOU", config.tracker_min_iou_for_match)));
+    config.tracker_iou_cost_weight = std::max(0.0F,
+        std::min(1.0F, envFloatOr("RK3588_TRACKER_IOU_WEIGHT", config.tracker_iou_cost_weight)));
+    config.tracker_center_velocity_alpha = std::max(0.01F,
+        std::min(1.0F, envFloatOr("RK3588_TRACKER_CENTER_VEL_ALPHA", config.tracker_center_velocity_alpha)));
+    config.tracker_ghost_velocity_decay = std::max(0.1F,
+        std::min(1.0F, envFloatOr("RK3588_TRACKER_GHOST_DECAY", config.tracker_ghost_velocity_decay)));
+    config.tracker_ghost_keep_frames = envUintOr("RK3588_TRACKER_GHOST_KEEP_FRAMES", config.tracker_ghost_keep_frames);
+    config.tracker_max_idle_frames = envUintOr("RK3588_TRACKER_MAX_IDLE_FRAMES", config.tracker_max_idle_frames);
 
     auto pipeline = rk3588::modules::PipelineFactory::makePerception(config);
     return pipeline.run();
