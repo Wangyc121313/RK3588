@@ -1,0 +1,420 @@
+openapi: 3.0.3
+info:
+  title: RK3588 Control Plane API
+  version: 1.0.0-draft
+  description: Draft API for pipeline control, run management, metrics and gate checks.
+servers:
+  - url: http://127.0.0.1:18080
+paths:
+  /api/v1/system/status:
+    get:
+      summary: Get system runtime status
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+
+  /api/v1/profiles:
+    get:
+      summary: List pipeline profiles
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PipelineProfile'
+    post:
+      summary: Create pipeline profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineProfileCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineProfile'
+
+  /api/v1/profiles/{profileId}:
+    put:
+      summary: Update pipeline profile
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineProfileUpdate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineProfile'
+
+  /api/v1/runs:
+    post:
+      summary: Start a run session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunStartRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunSession'
+
+  /api/v1/runs/{runId}:
+    get:
+      summary: Get run session detail
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunSession'
+
+  /api/v1/runs/{runId}/stop:
+    post:
+      summary: Stop a running session
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunSession'
+
+  /api/v1/runs/{runId}/artifacts:
+    get:
+      summary: List run artifacts
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Artifact'
+
+  /api/v1/runs/{runId}/metrics:
+    get:
+      summary: Get run-level aggregated metrics
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsSummary'
+
+  /api/v1/runs/{runId}/gate:
+    post:
+      summary: Execute gate check (PASS/FAIL)
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GateThresholds'
+      responses:
+        '200':
+          description: Gate result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GateResult'
+
+components:
+  schemas:
+    SystemStatus:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        device:
+          type: string
+        camera_available:
+          type: boolean
+        lidar_available:
+          type: boolean
+        zlm_reachable:
+          type: boolean
+        time_ms:
+          type: integer
+          format: int64
+      required:
+        - ok
+
+    PipelineProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        publish_mode:
+          type: string
+          enum: [rtsp, webrtc, both]
+        camera_device:
+          type: string
+        camera_width:
+          type: integer
+        camera_height:
+          type: integer
+        fps:
+          type: integer
+        model_path:
+          type: string
+        labels_path:
+          type: string
+        lidar_port:
+          type: string
+        lidar_baud:
+          type: integer
+        distance_fusion_mode:
+          type: string
+          enum: [legacy, robust]
+        tracker_min_iou:
+          type: number
+          format: float
+        tracker_iou_weight:
+          type: number
+          format: float
+      required:
+        - id
+        - name
+        - publish_mode
+
+    PipelineProfileCreate:
+      allOf:
+        - $ref: '#/components/schemas/PipelineProfile'
+      required:
+        - name
+
+    PipelineProfileUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        publish_mode:
+          type: string
+          enum: [rtsp, webrtc, both]
+        camera_device:
+          type: string
+        camera_width:
+          type: integer
+        camera_height:
+          type: integer
+        fps:
+          type: integer
+        model_path:
+          type: string
+        labels_path:
+          type: string
+        lidar_port:
+          type: string
+        lidar_baud:
+          type: integer
+        distance_fusion_mode:
+          type: string
+          enum: [legacy, robust]
+        tracker_min_iou:
+          type: number
+          format: float
+        tracker_iou_weight:
+          type: number
+          format: float
+
+    RunStartRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+        run_seconds:
+          type: integer
+        scenario:
+          type: string
+          enum: [single, static_target, approaching_target, crossing_occlusion, phasec_suite]
+      required:
+        - profile_id
+
+    RunSession:
+      type: object
+      properties:
+        run_id:
+          type: string
+        profile_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, stopping, stopped, completed, failed]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        output_dir:
+          type: string
+        error_message:
+          type: string
+      required:
+        - run_id
+        - status
+
+    Artifact:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [telemetry, pseudo_labels, video_h264, metrics_md, metrics_csv, showcase]
+        path:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+      required:
+        - type
+        - path
+
+    MetricsSummary:
+      type: object
+      properties:
+        scene:
+          type: string
+        frame_count:
+          type: integer
+        distance_jitter_std_m:
+          type: number
+          format: float
+        distance_jitter_p95_p5_m:
+          type: number
+          format: float
+        track_retention_ratio:
+          type: number
+          format: float
+        id_switch_proxy_rate:
+          type: number
+          format: float
+        track_fragmentation_rate:
+          type: number
+          format: float
+        latency_mean_ms:
+          type: number
+          format: float
+        latency_p95_ms:
+          type: number
+          format: float
+
+    GateThresholds:
+      type: object
+      properties:
+        retention_min:
+          type: number
+          format: float
+          default: 0.70
+        id_switch_max:
+          type: number
+          format: float
+          default: 0.20
+        fragmentation_max:
+          type: number
+          format: float
+          default: 0.60
+        latency_p95_max_ms:
+          type: number
+          format: float
+          default: 180
+        jitter_std_max_m:
+          type: number
+          format: float
+          default: 0.50
+        jitter_span_max_m:
+          type: number
+          format: float
+          default: 1.50
+
+    GateResult:
+      type: object
+      properties:
+        pass:
+          type: boolean
+        fail_count:
+          type: integer
+        scene_results:
+          type: array
+          items:
+            type: object
+            properties:
+              scene:
+                type: string
+              pass:
+                type: boolean
+              reasons:
+                type: array
+                items:
+                  type: string
+      required:
+        - pass
+        - fail_count

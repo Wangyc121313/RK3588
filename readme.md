@@ -132,3 +132,8 @@ python3 tools/diagnostics/check_phasec_gate.py \
 - `tools/`：诊断、标定、电机控制与调试工具。
 - `scripts/`：联调脚本与压力测试脚本。
 - `docs/`：架构、构建、运行、标定等详细文档。
+
+## 架构设计入口
+
+- `docs/ARCHITECTURE_INTERFACE_GUIDE.md`：系统分层、接口定义、数据流向图、前后端职责切分。
+- `docs/control_plane_openapi_v1.yaml`：控制面后端接口草案（OpenAPI 3.0）。
