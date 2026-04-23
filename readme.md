@@ -101,6 +101,30 @@ python3 tools/diagnostics/check_phasec_gate.py \
 	--latency-p95-max-ms 160
 ```
 
+### 8) 指标专用脚本
+
+仅跑三场景：
+
+```bash
+./scripts/run_resume_three_scenarios.sh /dev/video0 640 480 75 reports/phasec
+```
+
+产物：
+
+- `reports/phasec/latest/resume_metrics_3scene.md`
+- `reports/phasec/latest/resume_metrics_3scene.json`
+
+跑“三场景 + 整体压测”并输出总摘要：
+
+```bash
+PHASE_SECONDS=75 PERF_DURATION_S=300 PERF_ROUNDS=2 ./scripts/run_resume_overall_test.sh /dev/video0 640 480
+```
+
+产物：
+
+- `reports/resume/latest/resume_overall_summary.md`
+- `reports/resume/latest/resume_overall_summary.json`
+
 ## 关键环境变量
 
 - `RK3588_PSEUDO_LABEL_PATH`：伪标签输出路径。设为 `-` 时输出到标准输出。
