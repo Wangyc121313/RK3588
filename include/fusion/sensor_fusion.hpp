@@ -12,6 +12,7 @@ namespace rk3588::modules {
 
 struct FusionConfig {
 	int image_width = 640;
+	int image_height = 480;
 	float camera_fov_deg = 55.0F;
 	float lidar_angle_offset_deg = 0.0F;
 	float default_window_half_deg = 3.0F;
@@ -73,6 +74,10 @@ public:
 
 	int imageWidth() const {
 		return cfg_.image_width;
+	}
+
+	int imageHeight() const {
+		return cfg_.image_height;
 	}
 
 	LidarFovRange cameraFovToLidarRange() const {

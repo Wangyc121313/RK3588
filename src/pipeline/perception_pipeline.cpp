@@ -451,6 +451,7 @@ int PerceptionPipeline::run() {
 
 	FusionConfig fusion_cfg;
 	fusion_cfg.image_width = static_cast<int>(config_.camera_width);
+	fusion_cfg.image_height = static_cast<int>(config_.camera_height);
 	fusion_cfg.camera_fov_deg = config_.camera_fov_deg;
 	fusion_cfg.lidar_angle_offset_deg = config_.lidar_offset_deg;
 	fusion_cfg.default_window_half_deg = config_.lidar_window_half_deg;

@@ -251,8 +251,9 @@ private:
         const int box_width_px = std::max(0, det.right - det.left);
         const int box_height_px = std::max(0, det.bottom - det.top);
         const int image_width = std::max(1, fusion_.imageWidth());
+        const int image_height = std::max(1, fusion_.imageHeight());
         const float box_area_ratio = static_cast<float>(box_width_px * box_height_px) /
-            static_cast<float>(image_width * image_width);
+            static_cast<float>(image_width * image_height);
         if (det.confidence < cfg_.min_detection_confidence ||
             box_width_px < cfg_.min_box_width_px ||
             box_height_px < cfg_.min_box_height_px ||
