@@ -8,53 +8,71 @@
 
 ### 1.1 线程模型
 
-本项目采用**单事件循环 + 一个后台采集线程**的架构，而非最初项目计划中的四线程模式。实际落地方案更为简洁可靠：
+本项目采用 **3 线程生产者-消费者模型**，比最初计划的四线程方案更简洁可靠：
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  主线程 (事件循环)                                    │
-│                                                     │
-│  BoundedQueue ─→ RGA 前处理 ─→ RKNN 推理             │
-│       │                  ↓                          │
-│       │           检测结果复用（infer_every_n_frames） │
-│       │                  ↓                          │
-│       │           LiDAR 时间同步 + 融合 + 跟踪         │
-│       │                  ↓                          │
-│       │           NV12 Overlay + MPP 编码 + RTSP/WebRTC│
-│       │                                             │
-└───────┼─────────────────────────────────────────────┘
-        │
-┌───────┴─────────────────────────────────────────────┐
-│  LiDAR 采集线程                                      │
-│                                                     │
-│  RPLIDAR SDK ─→ LidarReader ─→ LidarAdapter        │
-│       ↓                                             │
-│  LidarRingBuffer (环形缓冲区, capacity=5)             │
-│       ↓                                             │
-│  atomic<scan_count> 计数                             │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────┐  ┌──────────────────────────────────┐
+│  Camera 采集线程（生产者）         │  │  LiDAR 采集线程（生产者）          │
+│                                  │  │                                  │
+│  V4L2 dequeue → FramePacket     │  │  RPLIDAR SDK → LidarReader       │
+│       │                          │  │       │                          │
+│       ▼                          │  │       ▼                          │
+│  BoundedQueue.push()             │  │  LidarAdapter 归一化              │
+│  (满时丢弃最旧帧)                  │  │       │                          │
+│       │                          │  │       ▼                          │
+│       ▼                          │  │  LidarRingBuffer.write()         │
+│  V4L2 enqueue 归还 buffer        │  │  (环形缓冲区, capacity=5)         │
+│       │                          │  │       │                          │
+│       ▼                          │  │       ▼                          │
+│  select() 等待下一帧              │  │  atomic<scan_count>++            │
+│       │                          │  │       │                          │
+│       └────────────┬─────────────┘  │       │                          │
+│                    │                │       │                          │
+│          BoundedQueue<FramePacket>  │  LidarRingBuffer                 │
+│                    │                │       │                          │
+└────────────────────┼────────────────┘  ┌────┼──────────────────────────┘
+                     │                   │    │
+                     ▼                   │    ▼
+┌────────────────────────────────────────┼───────────────────────────────┐
+│  主线程（消费者/事件循环）               │                                │
+│                                        │                                │
+│  queue.pop_for(200ms) ←──────── Camera │ 帧                              │
+│       │                                                                 │
+│       ▼                                                                 │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐          │
+│  │ RGA 前处理│ →  │ RKNN 推理│ →  │ 融合+跟踪 │ →  │ MPP 编码 │ → 推流   │
+│  │(YUYV→RGB)│    │(每5帧1次)│    │(距离+track)│   │(H.264)   │          │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘          │
+│                                                                         │
+│  融合时按时间戳从 LidarRingBuffer 读取最近点云帧                           │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1.2 核心容器
+**为什么是 3 线程而不是 4 线程？**
+- 最初计划将"推理+融合"拆为独立线程，但实际实现时发现推理结果需要立即用于当前帧的 Overlay 绘制，拆开会增加同步复杂度
+- 单事件循环天然避免了多消费者竞争问题
+- RKNN 推理（~30ms）虽然耗时，但通过 `infer_every_n_frames=5` 跳过中间帧，主线程仍能在 33ms 帧周期内完成所有处理
 
-#### BoundedQueue（有界队列）
+### 1.2 生产者-消费者通信
 
-位于 `include/core/bounded_queue.hpp`。Camera 采帧入队，主线程取帧处理。
+#### BoundedQueue（Camera → 主线程）
+
+位于 `include/core/bounded_queue.hpp`。
 
 ```cpp
 template <typename T>
 class BoundedQueue {
-    // 核心行为：
+    // 单生产者（Camera 线程）→ 单消费者（主线程）
     // push(): 队列满时自动 pop_front（丢弃最旧帧），保证延迟有界
-    // pop_for(timeout): 带超时的阻塞 pop，避免空转
+    // pop_for(timeout): 带超时的阻塞 pop，避免主线程空转
     // close(): 通知所有等待者退出
 };
 ```
 
 **设计要点**：
-- 单生产者（Camera 线程）单消费者（主线程），`std::mutex` + `std::condition_variable`
-- 满时丢旧帧而非阻塞：防止 Camera 线程被推理拖慢
-- 超时 pop：主线程每 200ms 检查一次是否有新帧，无帧则继续循环（避免死等）
+- 满时丢旧帧而非阻塞生产者：Camera 线程不能被推理速度拖慢，否则 V4L2 buffer 无法及时归还
+- 超时 pop（200ms）：主线程无帧时不会死等，可以检查退出条件
+- 主线程额外做一次非阻塞 drain：取到一帧后立即 `pop_for(0)` 清空队列中积压的旧帧，只处理最新帧（防积压）
 
 #### LidarRingBuffer（雷达环形缓冲区）
 
@@ -99,25 +117,39 @@ Camera (V4L2, YUYV 640x480, DMA fd)
 ### 1.4 DMA 零拷贝路径
 
 ```
-Camera DMA fd ──→ RGA importbuffer_fd ──→ RGA 硬件处理 ──→ RKNN set_input_fd
-     ↑                                                           │
-     └───────────── Camera requeueBuffer(index) ─────────────────┘
+Camera 线程                     主线程
+    │                             │
+    │ V4L2 dequeue                │
+    │ → FramePacket(dma_fd, idx)  │
+    │ → BoundedQueue.push()       │
+    │                             │ BoundedQueue.pop_for()
+    │                             │ → RGA importbuffer_fd(dma_fd)
+    │                             │ → RGA 硬件处理 (resize + CSC)
+    │                             │ → RKNN set_input_fd(RGA_out_fd)
+    │                             │ → RKNN 推理
+    │                             │ → Camera.requeueBuffer(idx)
+    │                 归还 idx ────│
+    │ V4L2 enqueue(idx)           │
+    │ (buffer 重新可用)            │
 ```
 
-- `FramePacket` 只传递 `buffer_index` + `dma_fd` + 元信息，不传递像素数据
-- RGA 和 RKNN 直接通过 DMA fd 访问内存，无 CPU `memcpy`
-- 推理完成后归还 `buffer_index` 给 Camera 线程，释放 V4L2 buffer 用于下一帧
+- `FramePacket` 只传递 `buffer_index` + `dma_fd` + 元信息（时间戳/尺寸），不传递像素数据
+- RGA 和 RKNN 直接通过 DMA fd 访问内存，无 CPU `memcpy`，零拷贝
+- 主线程处理完后调用 `requeueBuffer(index)` 归还 buffer，Camera 线程才能将该 buffer 重新入队 V4L2
+- 这是一个跨线程的闭环：**Camera 线程出队 → 主线程消费 → 归还索引 → Camera 线程入队**
 
 ### 1.5 线程安全退出
 
 ```cpp
+// Camera 线程：通过 stop() 设置 atomic<bool> running_ = false
+// captureLoop 在下一次 select() 超时或返回时检查标志位退出
+camera.stop();
+
 // LiDAR 线程：atomic<bool> 标志位
 std::atomic<bool> lidar_running{true};
 lidar_thread = std::thread([&] {
     while (lidar_running.load()) { /* poll & write */ }
 });
-
-// 退出时：
 lidar_running = false;
 lidar_thread.join();
 
