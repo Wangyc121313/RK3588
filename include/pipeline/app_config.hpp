@@ -17,7 +17,7 @@ struct AppConfig {
     std::string model_path = "models/yolov8n.rknn";
     std::uint32_t model_width = 640;
     std::uint32_t model_height = 640;
-    std::string labels_path = "third_party/rknn_model_zoo/examples/yolov8/model/coco_80_labels_list.txt";
+    std::string labels_path = "models/coco_80_labels_lists.txt";
     int infer_every_n_frames = 5;
     std::string calibration_profile_path;
 

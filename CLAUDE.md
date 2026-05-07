@@ -107,7 +107,6 @@ Key design decisions:
 ### Directory conventions
 
 - `include/<module>/` — public headers, structured by domain
-- `include/rk3588/<module>/` — alternate header namespace mirrors (symlinks or copies)
 - `src/<module>/` — corresponding `.cpp` implementations
 - `cmake/modules/` — one `.cmake` per library target
 - `cmake/deps/` — third-party dependency finders

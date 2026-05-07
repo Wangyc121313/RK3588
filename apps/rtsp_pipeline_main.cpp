@@ -86,7 +86,7 @@ int main(int argc, char* argv[]) {
     const int fps = argc > 9 ? std::max(1, std::atoi(argv[9])) : 25;
     const std::string labels_path = argc > 10
         ? argv[10]
-        : "third_party/rknn_model_zoo/examples/yolov8/model/coco_80_labels_list.txt";
+        : "models/coco_80_labels_lists.txt";
     const bool rtsp_listen_mode = [] {
         const char* env = std::getenv("RK3588_RTSP_LISTEN");
         return env != nullptr && env[0] != '\0' && env[0] != '0';
