@@ -1,186 +1,120 @@
-# RK3588 边缘多模态感知与自动预标注系统
+# RK3588 多模态感知系统
 
-本项目基于 RK3588 平台，构建相机 + LiDAR 的实时感知链路，支持目标检测、融合测距、时序跟踪、视频发布以及伪标签导出。
+基于 RK3588（Orange Pi 5）的实时相机 + LiDAR 融合感知系统，支持目标检测、融合测距、多目标跟踪、视频推流与伪标签导出。
 
 ## 主要能力
 
-- 实时感知链路：采集 -> 预处理 -> 推理 -> 融合 -> 跟踪 -> 编码/发布。
-- 多模态融合：为检测目标注入距离信息，并保留融合诊断字段。
-- 时序跟踪：输出稳定的目标 `track_id`、年龄、速度与 TTC 等信息。
-- 数据闭环：支持按帧导出 JSONL 伪标签，可直接用于后处理或训练前清洗。
+- **硬件加速 Pipeline**：V4L2 DMA 采集 → RGA 前处理 → RKNN NPU 推理（YOLOv8n）→ MPP 硬编码 H.264，全链路零拷贝
+- **多模态融合**：RPLIDAR A1 雷达与相机空间对齐，鲁棒聚类距离估计，为每个检测框注入距离信息
+- **多目标跟踪**：IoU + 中心距离 + 角度 + 距离四维关联，支持短时遮挡 ghost 预测，输出 track_id / 速度 / TTC
+- **RTSP / WebRTC 推流**：基于 ZLMediaKit，支持 NV12 叠加层（检测框 + HUD）
+- **数据闭环**：按帧导出 JSONL 伪标签，可直接用于模型训练或后处理分析
 
 ## 快速开始
 
-### 1) 构建
+### 构建
 
 ```bash
 cmake -S . -B build
 cmake --build build -j
 ```
 
-### 2) 启动感知主程序
+### 运行感知主程序
 
 ```bash
+# 30 秒默认运行
 ./build/perception_app
 ```
 
-### 3) 启用伪标签导出（推荐）
-
 ```bash
+# 启用伪标签 + 遥测导出
 export RK3588_PSEUDO_LABEL_PATH=/tmp/rk3588_pseudo_labels.jsonl
-export RK3588_PSEUDO_LABEL_MAX_LINES=5000
-export RK3588_PSEUDO_LABEL_SEQUENCE_ID=exp_20260415_cam_lidar
 export RK3588_TELEMETRY_PATH=/tmp/rk3588_telemetry.jsonl
-
 ./build/perception_app
 ```
 
-也可以直接一键采集并校验：
+## 架构
 
-```bash
-./scripts/run_pseudo_label_capture.sh /dev/video0 640 480 60 /tmp/rk3588_pseudo_labels.jsonl /tmp/rk3588_telemetry.jsonl
+```
+Camera (V4L2, YUYV 640x480)
+  ├─→ RGA (YUYV→RGB 640x640) → RKNN (YOLOv8n) → detections
+  │                                                    ↓
+  │                           LiDAR → Ring Buffer → Fusion (distance)
+  │                                                    ↓
+  │                                         MultiTargetTracker (track_id, velocity, TTC)
+  │                                                    ↓
+  └─→ format convert (YUYV→NV12) → Overlay (draw boxes) → MPP (H.264) → RTSP/WebRTC
 ```
 
-### 4) 校验导出质量
+| 模块 | 位置 | 说明 |
+|------|------|------|
+| Camera | `src/camera/` | V4L2 采集，DMA buffer pool |
+| RGA | `src/video/rga_processor.cpp` | 硬件加速 YUYV→RGB/NV12，DMA fd 零拷贝 |
+| RKNN | `src/infer/rknn_runner.cpp` | YOLOv8n INT8 NPU 推理 |
+| LiDAR | `src/lidar/` | RPLIDAR A1 驱动 + 环形缓冲区 |
+| Fusion | `include/fusion/` | 角度窗映射 + 鲁棒聚类距离估计（header-only） |
+| Tracker | `include/fusion/multi_target_tracker.hpp` | 多目标跟踪 + ghost 预测（header-only） |
+| MPP | `src/video/mpp_encoder.cpp` | 硬件 H.264 编码 |
+| Publish | `src/video/zlm_rtsp_publisher.cpp` | RTSP / WebRTC 推流 |
+| Pipeline | `src/pipeline/perception_pipeline.cpp` | 主事件循环编排 |
+| Overlay | `src/video/nv12_overlay.cpp` | NV12 帧上绘制检测框 + HUD |
+
+核心设计决策：3 线程生产者-消费者模型、BoundedQueue 满时丢旧帧防积压、`infer_every_n_frames=5` 跳帧推理、fusion/tracker 全部 header-only。
+
+## 测试
 
 ```bash
-python3 tools/diagnostics/validate_pseudo_labels.py --glob '/tmp/rk3588_pseudo_labels.jsonl*'
-```
-
-### 5) 评估跟踪质量（建议）
-
-```bash
-python3 tools/diagnostics/analyze_tracking_metrics.py --glob '/tmp/rk3588_pseudo_labels.jsonl*'
-```
-
-关键指标说明：
-
-- `track_retention_ratio`：相邻帧中，已确认轨迹被持续保留的比例（越高越好）。
-- `id_switch_proxy_rate`：基于相邻帧 IoU 匹配的 ID 切换代理指标（越低越好）。
-- `track_fragmentation_rate`：同一轨迹被切成多个不连续片段的程度（越低越好）。
-
-### 6) 三场景统一测试（推荐）
-
-```bash
+# 三场景测试（静态目标 / 接近目标 / 遮挡穿行），自动生成指标汇总
 ./scripts/run_phasec_suite.sh /dev/video0 640 480 75 reports/phasec
-```
 
-默认行为：
+# 校验伪标签导出质量
+python3 tools/diagnostics/validate_pseudo_labels.py --glob '/tmp/rk3588_pseudo_labels.jsonl*'
 
-- 推流协议默认 `webrtc`。
-- 默认启动 8090 Debug UI：`http://127.0.0.1:8090/?app=live&stream=camera`。
+# 跟踪质量指标（retention / ID切换 / 碎片化）
+python3 tools/diagnostics/analyze_tracking_metrics.py --glob '/tmp/rk3588_pseudo_labels.jsonl*'
 
-说明：
-
-- 脚本会依次执行三类场景：`static_target`、`approaching_target`、`crossing_occlusion`。
-- 每个场景会产出：`telemetry.jsonl`、`pseudo_labels.jsonl`、`video.h264`、`tracking_metrics.txt`、`config.env`。
-- 测试完成后自动汇总核心指标并生成：
-	- `metrics_table.md`
-	- `metrics_table.csv`
-	- `showcase/`（最小展示包：演示视频 + 指标表 + 配置说明）
-
-若不希望每个场景手动按回车开始，可设置：
-
-```bash
-PHASEC_NO_PAUSE=1 ./scripts/run_phasec_suite.sh /dev/video0 640 480 75 reports/phasec
-```
-
-若需关闭 Debug UI，可设置：
-
-```bash
-START_DEBUG_UI=0 PHASEC_NO_PAUSE=1 ./scripts/run_phasec_suite.sh /dev/video0 640 480 75 reports/phasec
-```
-
-### 7) 自动验收判定（PASS/FAIL）
-
-```bash
+# 自动验收判定
 python3 tools/diagnostics/check_phasec_gate.py --run-dir reports/phasec/latest
+
+# 长时间压力测试（30 分钟 × 3 轮）
+./scripts/perf_stress_suite.sh 1800 3 reports/perf
 ```
-
-说明：
-
-- 默认检查三场景 `static_target`、`approaching_target`、`crossing_occlusion`。
-- 满足阈值返回退出码 `0`（PASS），否则返回 `1`（FAIL）。
-- 阈值可按现场要求调整，例如：
-
-```bash
-python3 tools/diagnostics/check_phasec_gate.py \
-	--run-dir reports/phasec/latest \
-	--retention-min 0.75 \
-	--id-switch-max 0.15 \
-	--fragmentation-max 0.50 \
-	--latency-p95-max-ms 160
-```
-
-### 8) 指标专用脚本
-
-三场景测试：
-
-```bash
-./scripts/run_resume_three_scenarios.sh /dev/video0 640 480 75 reports/phasec
-```
-
-产物：
-
-- `reports/phasec/latest/resume_metrics_3scene.md`
-- `reports/phasec/latest/resume_metrics_3scene.json`
-
-整体压测：
-
-```bash
-# 半小时压力测试
-PERF_DURATION_S=1800 PERF_ROUNDS=1 ./scripts/run_resume_overall_test.sh /dev/video0 640 480
-```
-
-说明：
-
-- 默认 `RUN_THREE_SCENES=0`，只跑整体压测。
-- 若 `reports/phasec/latest/resume_metrics_3scene.json` 存在，会自动复用历史三场景指标写入总摘要。
-- 若不存在历史三场景结果，则总摘要中三场景部分标记为 `SKIPPED`。
-- 如需在本次总测中一并重跑三场景测试，可显式启用：
-
-```bash
-RUN_THREE_SCENES=1 PHASE_SECONDS=75 PERF_DURATION_S=1800 PERF_ROUNDS=1 ./scripts/run_resume_overall_test.sh /dev/video0 640 480
-```
-
-产物：
-
-- `reports/resume/latest/resume_overall_summary.md`
-- `reports/resume/latest/resume_overall_summary.json`
 
 ## 关键环境变量
 
-- `RK3588_PSEUDO_LABEL_PATH`：伪标签输出路径。设为 `-` 时输出到标准输出。
-- `RK3588_PSEUDO_LABEL_MAX_LINES`：单个伪标签文件最大行数，超过后自动滚动到 `.1`、`.2`。
-- `RK3588_PSEUDO_LABEL_SEQUENCE_ID`：伪标签序列编号，用于区分不同采集批次。
-- `RK3588_TELEMETRY_PATH`：运行遥测 JSONL 输出路径。
-- `RK3588_TELEMETRY_INTERVAL_MS`：遥测输出间隔（毫秒）。
-- `RK3588_DISTANCE_FUSION_MODE`：距离融合模式，`robust`（默认）或 `legacy`。
-- `RK3588_TRACKER_MIN_IOU`：跟踪匹配最小 IoU 阈值（建议 0.03~0.15）。
-- `RK3588_TRACKER_IOU_WEIGHT`：IoU 在匹配代价中的权重（建议 0.2~0.6）。
-- `RK3588_TRACKER_GHOST_KEEP_FRAMES`：短时丢检保留帧数（建议 3~6）。
-- `RK3588_TRACKER_MAX_IDLE_FRAMES`：轨迹最大空闲帧数（建议 >= ghost_keep）。
-- `RK3588_TRACKER_CENTER_VEL_ALPHA`：中心速度平滑系数（越大越敏捷）。
-- `RK3588_TRACKER_GHOST_DECAY`：ghost 外推速度衰减系数（越小越保守）。
-- `RK3588_DISABLE_VIDEO_OVERLAY`：设为非 `0` 值时关闭视频叠加绘制。
-- `RK3588_DEBUG_VIDEO_HUD`：设为非 `0` 值时开启调试 HUD。
+| 变量 | 作用 | 默认值 |
+|------|------|--------|
+| `RK3588_PSEUDO_LABEL_PATH` | 伪标签 JSONL 输出路径 | 空（不导出） |
+| `RK3588_TELEMETRY_PATH` | 遥测 JSONL 输出路径 | 空（不导出） |
+| `RK3588_DISTANCE_FUSION_MODE` | 融合模式：`robust` / `legacy` | `robust` |
+| `RK3588_TRACKER_MIN_IOU` | 跟踪 IoU 阈值 | `0.05` |
+| `RK3588_TRACKER_GHOST_KEEP_FRAMES` | ghost 保留帧数 | `4` |
+| `RK3588_TRACKER_MAX_IDLE_FRAMES` | 轨迹最大空闲帧数 | `12` |
+| `RK3588_DISABLE_VIDEO_OVERLAY` | 关闭检测框绘制 | 空（绘制） |
+| `RK3588_DEBUG_VIDEO_HUD` | 开启调试 HUD | 空（关闭） |
+| `RK3588_CALIBRATION_PROFILE` | 标定配置文件路径 | 空 |
 
-## 伪标签格式（每帧）
+## 文档
 
-- 顶层字段：`schema`、`sequence_id`、`source_fps`、`camera_device`、`frame_id`、`timestamp_ms`、`lidar_matched`、`lidar_delta_ms`、`sensor_snapshot`。
-- `sensor_snapshot`：`camera_fov_deg`、`lidar_offset_deg`、`lidar_fov_deg`、`lidar_window_half_deg`、`lidar_min_dist_m`、`lidar_max_dist_m`、`lidar_max_age_ms`、`calibration_profile`。
-- 目标字段：`class_id`、`class_name`、`confidence`、`distance_m`、`bbox`、`track_id`、`track_age_frames`、`track_idle_frames`、`track_confirmed`、`track_is_ghost`、`track_angle_deg`。
+- [技术手册](docs/technical_manual.md) — 多线程架构、融合算法、跟踪算法详细设计
+- [JD 技能补全路线图](docs/jd_skill_roadmap.md) — 针对感知岗位的技能补全计划
 
-## 目录概览
+## 目录
 
-- `apps/`：应用入口（`perception_main.cpp`、`stream_gateway_main.cpp`）。
-- `src/`：核心实现（相机、推理、融合、跟踪、视频、pipeline）。
-- `include/`：对外头文件。
-- `tools/`：诊断、标定、电机控制与调试工具。
-- `scripts/`：联调脚本与压力测试脚本。
-- `docs/`：架构、构建、运行、标定等详细文档。
+```
+.
+├── apps/         应用入口（perception_app / stream_gateway）
+├── src/          核心实现（camera / infer / lidar / video / pipeline）
+├── include/      头文件（fusion 为 header-only）
+├── tools/        标定、诊断、电机控制、WebRTC 调试
+├── scripts/      测试与联调脚本
+├── docs/         技术文档
+├── models/       RKNN 模型文件 + 标签列表
+├── cmake/        CMake 模块 + 第三方依赖查找器
+├── demos/        独立 demo 程序
+└── reports/      测试报告输出（gitignored）
+```
 
-## 架构设计入口
+## License
 
-- `docs/ARCHITECTURE_INTERFACE_GUIDE.md`：系统分层、接口定义、数据流向图、前后端职责切分。
-- `docs/control_plane_openapi_v1.yaml`：控制面后端接口草案（OpenAPI 3.0）。
+MIT
