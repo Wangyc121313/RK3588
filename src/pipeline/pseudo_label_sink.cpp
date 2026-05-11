@@ -132,7 +132,8 @@ void PseudoLabelSink::writeFrame(const std::string& camera_device,
                                  std::uint64_t lidar_max_age_ms,
                                  const std::string& calibration_profile_path,
                                  const std::vector<YoloDetection>& detections,
-                                 const std::vector<TrackEstimate>& tracks) {
+                                 const std::vector<TrackEstimate>& tracks,
+                                 const std::vector<DistanceFusionDiagnostics>& diagnostics) {
     if (!enabled() || !ensureOpen()) {
         return;
     }
@@ -180,6 +181,7 @@ void PseudoLabelSink::writeFrame(const std::string& camera_device,
         const TrackEstimate* track = i < tracks.size() ? &(tracks[i]) : nullptr;
         const float tracked_distance =
             (track != nullptr && track->filtered_distance_m >= 0.0F) ? track->filtered_distance_m : det.distance_m;
+        const DistanceFusionDiagnostics* diag = (i < diagnostics.size()) ? &diagnostics[i] : nullptr;
 
         if (i != 0) {
             json << ',';
@@ -187,9 +189,18 @@ void PseudoLabelSink::writeFrame(const std::string& camera_device,
 
         json << '{'
              << "\"class_id\":" << det.class_id << ','
-             << "\"class_name\":\"" << escapeJson(det.class_name) << "\"," 
+             << "\"class_name\":\"" << escapeJson(det.class_name) << "\","
              << "\"confidence\":" << det.confidence << ','
              << "\"distance_m\":" << tracked_distance << ','
+             << "\"fusion\":{"
+             << "\"raw_distance_m\":" << (diag != nullptr ? diag->raw_distance_m : -1.0F) << ','
+             << "\"candidate_points\":" << (diag != nullptr ? diag->candidate_points : 0) << ','
+             << "\"cluster_points\":" << (diag != nullptr ? diag->cluster_points : 0) << ','
+             << "\"cluster_score\":" << (diag != nullptr ? diag->cluster_score : 0.0F) << ','
+             << "\"used_fallback\":" << ((diag != nullptr && diag->used_fallback) ? "true" : "false") << ','
+             << "\"used_temporal_smoothing\":" << ((diag != nullptr && diag->used_temporal_smoothing) ? "true" : "false") << ','
+             << "\"rejected_by_sanity\":" << ((diag != nullptr && diag->rejected_by_sanity) ? "true" : "false")
+             << "},"
              << "\"bbox\":{"
              << "\"left\":" << det.left << ','
              << "\"top\":" << det.top << ','

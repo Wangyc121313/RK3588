@@ -93,6 +93,12 @@ int main(int argc, char* argv[]) {
         : config.lidar_max_age_ms;
     config.publish_mode = argc > 21 ? argv[21] : config.publish_mode;
     config.webrtc_url = argc > 22 ? argv[22] : config.webrtc_url;
+    config.model_path = envStringOrEmpty("RK3588_MODEL_PATH").empty()
+        ? config.model_path
+        : envStringOrEmpty("RK3588_MODEL_PATH");
+    config.labels_path = envStringOrEmpty("RK3588_LABELS_PATH").empty()
+        ? config.labels_path
+        : envStringOrEmpty("RK3588_LABELS_PATH");
     config.camera_fov_deg = std::max(1.0F, envFloatOr("RK3588_CAMERA_FOV_DEG", config.camera_fov_deg));
     config.swap_uv = envEnabled("RK3588_YUV_SWAP_UV");
     config.forced_422_fourcc = forced422FourccFromEnv();

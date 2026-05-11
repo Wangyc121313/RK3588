@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "fusion/detection_distance_fusion.hpp"
 #include "fusion/multi_target_tracker.hpp"
 #include "infer/rknn_runner.hpp"
 
@@ -35,7 +36,8 @@ public:
                     std::uint64_t lidar_max_age_ms,
                     const std::string& calibration_profile_path,
                     const std::vector<YoloDetection>& detections,
-                    const std::vector<TrackEstimate>& tracks);
+                    const std::vector<TrackEstimate>& tracks,
+                    const std::vector<DistanceFusionDiagnostics>& diagnostics);
 
 private:
     void rotateFile();

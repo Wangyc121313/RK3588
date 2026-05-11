@@ -769,7 +769,8 @@ int PerceptionPipeline::run() {
 							 config_.lidar_max_age_ms,
 							 config_.calibration_profile_path,
 							 last_detections,
-							 track_estimates);
+							 track_estimates,
+							 fusion_diagnostics);
 		}
 
 		bool ok = false;
